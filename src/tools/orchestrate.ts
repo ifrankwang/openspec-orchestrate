@@ -623,6 +623,18 @@ function renderTaskItem(t: TaskItem): string {
   return `- Task id=${t.id} ｜ ${t.title}${trace}`
 }
 
+function sortIssuesByCategory(issues: IssueItem[]): IssueItem[] {
+  const dimRank = (d: string) => {
+    const idx = (REVIEW_DIMENSIONS as readonly string[]).indexOf(d)
+    return idx === -1 ? REVIEW_DIMENSIONS.length : idx
+  }
+  const sevRank = (s: string) => {
+    const idx = (SEVERITY_LEVELS as readonly string[]).indexOf(s)
+    return idx === -1 ? SEVERITY_LEVELS.length : idx
+  }
+  return [...issues].sort((a, b) => dimRank(a.dimension) - dimRank(b.dimension) || sevRank(a.severity) - sevRank(b.severity))
+}
+
 function renderIssueItem(i: IssueItem): string {
   const lines: string[] = []
   lines.push(`- Issue #${i.id} | ${i.severity} | ${i.dimension}`)
@@ -863,24 +875,24 @@ function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState): strin
     (i) => (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
   )
   if (blockingIssues.length === 0) lines.push("- (无)")
-  else for (const i of blockingIssues) lines.push(renderIssueItem(i))
+  else for (const i of sortIssuesByCategory(blockingIssues)) lines.push(renderIssueItem(i))
   lines.push("")
   lines.push("## Issue (待修复 · Info，可选，不阻塞提交)", "")
   const infoFix = tg.issues.filter(
     (i) => (i.status === "open" || i.status === "rejected") && !isBlockingIssue(i)
   )
   if (infoFix.length === 0) lines.push("- (无)")
-  else for (const i of infoFix) lines.push(renderIssueItem(i))
+  else for (const i of sortIssuesByCategory(infoFix)) lines.push(renderIssueItem(i))
   lines.push("")
   lines.push("## Issue (已修复待验证)", "")
   const submittedIssues = tg.issues.filter((i) => i.status === "submitted")
   if (submittedIssues.length === 0) lines.push("- (无)")
-  else for (const i of submittedIssues) lines.push(renderIssueItem(i))
+  else for (const i of sortIssuesByCategory(submittedIssues)) lines.push(renderIssueItem(i))
   lines.push("")
   lines.push("## Issue (豁免裁定中)", "")
   const exemption = tg.issues.filter((i) => i.status === "exemption")
   if (exemption.length === 0) lines.push("- (无)")
-  else for (const i of exemption) lines.push(renderIssueItem(i))
+  else for (const i of sortIssuesByCategory(exemption)) lines.push(renderIssueItem(i))
   return lines.join("\n")
 }
 
@@ -906,7 +918,7 @@ function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): stri
     (i) => i.status === "open" || i.status === "submitted" || i.status === "exemption"
   )
   if (allIssues.length === 0) lines.push("- (无)")
-  else for (const i of allIssues) {
+  else for (const i of sortIssuesByCategory(allIssues)) {
     const dimTag = `[${i.dimension}]`
     lines.push(`- ${dimTag} Issue #${i.id} | ${i.severity} | ${i.file}:${i.line}`)
     lines.push(`  - 描述：${i.description}`)

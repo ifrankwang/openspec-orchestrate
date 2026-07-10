@@ -307,6 +307,32 @@ const DIMENSION_AGENT_MAP: Record<ReviewDimension, string> = {
   maintainability: "openspec-reviewer-maintainability",
 }
 
+// ─── 阶段门禁：当前可执行角色推导 ───
+
+function deriveCurrentAgents(tg: TaskGroupState): string[] {
+  if (tg.status === "task_analysis") return ["openspec-architect"]
+  if (tg.status === "dev_impl") return ["openspec-developer"]
+  if (tg.status === "review") {
+    if (!tg.phases.review.tool.completed) return ["openspec-reviewer-tool"]
+    if (!tg.phases.review.task.completed) return ["openspec-reviewer-task"]
+    const requiredDims = computeRequiredDims(tg)
+    return requiredDims.map((d) => DIMENSION_AGENT_MAP[d])
+  }
+  return []
+}
+
+const AGENT_TO_SUBMIT_TOOL: Record<string, string> = {
+  "openspec-architect": "opx_arch_submit",
+  "openspec-developer": "opx_dev_submit",
+  "openspec-reviewer-tool": "opx_tool_review_submit",
+  "openspec-reviewer-task": "opx_task_review_submit",
+  "openspec-reviewer-style": "opx_quality_review_submit",
+  "openspec-reviewer-architecture": "opx_quality_review_submit",
+  "openspec-reviewer-performance": "opx_quality_review_submit",
+  "openspec-reviewer-security": "opx_quality_review_submit",
+  "openspec-reviewer-maintainability": "opx_quality_review_submit",
+}
+
 // ─── tasks.md 解析 ───
 
 interface ParsedTask {
@@ -1045,10 +1071,18 @@ export const init = tool({
       worktree_path: tool.schema.string().min(1).describe("已有 worktree 的绝对路径"),
       branch_name: tool.schema.string().min(1).describe("worktree 对应的分支名（如 task-group/3）"),
       preserve_progress: tool.schema.boolean().default(true).optional().describe("是否保留阶段内进度（task/issue 状态）。true 时只修阶段错位、不动阶段内明细；false 时按 phase 重置全部 task/issue 进度。默认 true。"),
+      review_layer: tool.schema
+        .enum(["tool", "task", "quality"])
+        .optional()
+        .describe("恢复到 review 内某子层（仅 phase=review 时有效）。tool→从 tool 层开始（默认），task→tool 层标记完成从 task 层开始，quality→tool+task 层完成从 quality 层开始"),
     }).optional().describe("进度恢复参数。提供后按 phase 恢复阶段状态，< phase 为 completed，== phase 为 in_progress，> phase 为 not_started。"),
   },
   async execute(args, context) {
     assertOrchestrator(context, "opx_orch_init")
+
+    if (args.recovery?.review_layer && args.recovery.phase !== "review") {
+      throw new Error("review_layer 参数仅当 recovery.phase 为 review 时有效，当前 phase 为 \"" + args.recovery.phase + "\"。")
+    }
 
     const parsedGroups = await parseAllTaskGroupsFromMd(context.worktree, args.change_id)
     if (parsedGroups.length === 0) {
@@ -1072,7 +1106,10 @@ export const init = tool({
       rejectReason: null,
     }))
 
-    function buildPhases(targetPhase: BuildPhaseTarget | null): { phases: Phases; status: BuildPhaseTarget } {
+    function buildPhases(
+      targetPhase: BuildPhaseTarget | null,
+      reviewLayer?: "tool" | "task" | "quality"
+    ): { phases: Phases; status: BuildPhaseTarget } {
       if (!targetPhase) return { phases: createEmptyPhases(), status: "task_analysis" }
       const phases = createEmptyPhases()
       let found = false
@@ -1086,6 +1123,15 @@ export const init = tool({
           } else {
             phases.architect_review = { completed: true }
           }
+        }
+      }
+      // Handle review_layer sub-phase recovery
+      if (targetPhase === "review" && reviewLayer) {
+        if (reviewLayer === "task" || reviewLayer === "quality") {
+          phases.review.tool.completed = true
+        }
+        if (reviewLayer === "quality") {
+          phases.review.task.completed = true
         }
       }
       return { phases, status: targetPhase }
@@ -1119,7 +1165,7 @@ export const init = tool({
         // Current group: rebuild
         const defaultPhase = args.recovery ? args.recovery.phase : "task_analysis"
         const phases = args.recovery
-          ? buildPhases(args.recovery.phase as BuildPhaseTarget).phases
+          ? buildPhases(args.recovery.phase as BuildPhaseTarget, args.recovery?.review_layer).phases
           : buildPhases("task_analysis").phases
         const preserveProgress = args.recovery?.preserve_progress !== false
         if (existing && args.recovery && preserveProgress) {
@@ -1144,6 +1190,17 @@ export const init = tool({
             phases.review.tool = existing.phases.review.tool
             phases.review.task = existing.phases.review.task
             phases.review.quality = existing.phases.review.quality
+          }
+        }
+
+        // review_layer 必须在 preserve_progress 之后应用，避免被 existing 值覆盖
+        if (args.recovery?.phase === "review" && args.recovery?.review_layer) {
+          const rl = args.recovery.review_layer
+          if (rl === "task" || rl === "quality") {
+            phases.review.tool.completed = true
+          }
+          if (rl === "quality") {
+            phases.review.task.completed = true
           }
         }
 
@@ -1179,7 +1236,7 @@ export const init = tool({
           const isCurrent = p.id === args.current_task_group_id
           const defaultPhase = args.recovery ? args.recovery.phase : "task_analysis"
           const { phases, status } = isCurrent
-            ? buildPhases(args.recovery ? (args.recovery.phase as BuildPhaseTarget) : "task_analysis")
+            ? buildPhases(args.recovery ? (args.recovery.phase as BuildPhaseTarget) : "task_analysis", args.recovery?.review_layer)
             : { phases: createEmptyPhases(), status: "task_analysis" as Phase }
           if (isCurrent) {
             phases.dev_impl.tasks = newTasks.map((t) => ({
@@ -1214,6 +1271,22 @@ export const init = tool({
       const reviewIdx = PHASE_ORDER.indexOf("review")
       if (recoveryIdx >= reviewIdx) {
         ctg.lastFilesChanged = await getDiffFileList(args.recovery.worktree_path, baseRef)
+      }
+
+      // Auto-fill executionBoundary for dev_impl/review recovery when missing
+      if ((args.recovery.phase === "dev_impl" || args.recovery.phase === "review") && !ctg.executionBoundary) {
+        const diffFiles = recoveryIdx >= reviewIdx
+          ? ctg.lastFilesChanged
+          : await getDiffFileList(args.recovery.worktree_path, baseRef)
+        const dirs = [...new Set(diffFiles.map((f) => {
+          const d = path.dirname(f)
+          return d === "." ? f : d
+        }).filter(Boolean))]
+        ctg.executionBoundary = {
+          allowed_directories: dirs.length > 0 ? dirs : ["."],
+          allowed_packages: [],
+          notes: "(恢复时自动生成)",
+        }
       }
     }
 
@@ -1386,6 +1459,22 @@ export const status = tool({
     }
 
     const tg = findTaskGroup(state, state.currentTaskGroupId)
+
+    // Phase gate: 非 orchestrator 角色必须匹配当前可执行角色
+    if (agent !== ORCHESTRATOR_AGENT) {
+      const expected = deriveCurrentAgents(tg)
+      if (!expected.includes(agent)) {
+        return [
+          "# ⛔ 阶段门禁",
+          "",
+          `当前阶段为 **${tg.status}**，未轮到你（**${agent}**）执行。`,
+          `当前预期角色为：\`${expected.join(", ") || "(无)"}\``,
+          "",
+          "请立即结束当前会话，不要执行任何操作。",
+        ].join("\n")
+      }
+    }
+
     let view: string
     if (agent === ORCHESTRATOR_AGENT) {
       const diskWts = await discoverDiskWorktrees(context.worktree)
@@ -1403,6 +1492,22 @@ export const status = tool({
     } else {
       view = renderOrchestratorView(state, tg)
     }
+
+    // 通过 gate 检查的非 orchestrator 角色：注入提交指令块
+    if (agent !== ORCHESTRATOR_AGENT) {
+      const submitTool = AGENT_TO_SUBMIT_TOOL[agent] || "对应 submit 工具"
+      const instructionBlock = [
+        "# ✅ 当前轮到你执行",
+        "",
+        `完成本职工作后**必须**调用 \`${submitTool}\` 提交。`,
+        "即使无 issue / 无待处理项，也必须提交 passed=true。",
+        "",
+        "---",
+        "",
+      ].join("\n")
+      view = instructionBlock + view
+    }
+
     return view
   },
 })

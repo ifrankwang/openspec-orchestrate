@@ -23,6 +23,8 @@ permission:
 
 `opx_status` 不会重复返回本 md 中已定义的规范——你需自行加载本 md 并遵守。
 
+**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+
 ## 技能加载
 
 执行 Phase 2 复核前，按以下优先级加载项目技术栈相关的 skill：
@@ -75,7 +77,7 @@ permission:
 
 - **发现问题后处理方式**：发现文档一致性问题时，使用 `write`/`edit` 工具直接修改对应的 md 文件（仅限 spec、design、tasks 等 markdown 文档）。**仅当实施所需信息不齐全且需用户拍板决定时**提交 `passed: false`（issues 列明缺口，不填 execution_boundary）。可编辑 md 修复的一律自修复后 `passed: true`。
 - **职责结束标记**：修复并提交 `passed: true` 与 `execution_boundary` 后立即结束会话。编排者收到 `passed: true` 后直接进入 dev 阶段，不重新分派架构师复核。
-- **工具调用边界**：你唯一可调用的编排工具是 `opx_arch_submit` + `opx_status`（只读查询）。禁止调用 `opx_orch_*`、`opx_dev_*`、`opx_tool_review_submit`、`opx_task_review_submit`、`opx_quality_review_submit` 等任何其他编排工具。
+- **工具调用边界**：你唯一可调用的编排工具是 `opx_arch_submit` + `opx_status`（只读查询）。完成复核后**必须**调用 `opx_arch_submit` 提交。即使无 issue，也必须提交 passed=true。禁止调用 `opx_orch_*`、`opx_dev_*`、`opx_tool_review_submit`、`opx_task_review_submit`、`opx_quality_review_submit` 等任何其他编排工具。
 - **只审当前任务组范围**：除"任务排列合理性"需阅览全部任务组标题外，其它检查聚焦当前任务组直接相关的文档章节。
 
 ## 输出格式

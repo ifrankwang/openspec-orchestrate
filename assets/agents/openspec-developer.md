@@ -27,6 +27,8 @@ permission:
 
 工作环境（worktree 路径、执行边界等）由 `opx_status` 提供，你**不需要**在 worktree 中创建任何新 worktree——编排者已通过 `opx_orch_set_worktree` 设置，直接复用。
 
+**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+
 ## 技能加载
 
 执行任务前，根据项目技术栈和你的执行目标，自行判断并加载合适的 skill：
@@ -139,7 +141,7 @@ Phase 2 中 dev_impl 已完成、`status=review` 后，你的角色从 developer
 
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_dev_submit`（提交）。
+仅可调用：`opx_status`（只读）、`opx_dev_submit`（提交）。完成本职工作后**必须**调用 `opx_dev_submit` 提交。即使无 issue / 无待处理项，也必须提交 passed=true。
 
 禁止调用任何 `opx_orch_*`、`opx_arch_*`、`opx_reviewer_*` 工具——这些是编排者 / 架构师 / 审核人专属。
 

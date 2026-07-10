@@ -18,6 +18,8 @@ permission:
 
 **开始任务前必须**：调用 `opx_status`——按 `openspec-reviewer-tool` 角色路由返回 worktree 路径 / diff 范围 / 本维度存量 issue。
 
+**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+
 ## 技能加载
 
 执行任务前，必须加载：
@@ -119,6 +121,6 @@ permission:
 
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_tool_review_submit`（提交）。
+仅可调用：`opx_status`（只读）、`opx_tool_review_submit`（提交）。完成审核后**必须**调用 `opx_tool_review_submit` 提交。即使无 issue，也必须提交 passed=true。
 
 禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_task_review_submit`、`opx_quality_review_submit` 等任何其它编排工具。

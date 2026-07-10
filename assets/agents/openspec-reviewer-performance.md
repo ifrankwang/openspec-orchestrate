@@ -18,6 +18,8 @@ permission:
 
 `opx_status` 不会返回执行边界（你不关心）、不显示已豁免 issue、不显示其它维度 issue——避免上下文噪音。
 
+**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+
 ## 技能加载
 
 执行任务前，按以下优先级加载项目技术栈相关的 skill：
@@ -110,6 +112,6 @@ permission:
 
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_quality_review_submit`。
+仅可调用：`opx_status`（只读）、`opx_quality_review_submit`（提交）。完成审查后**必须**调用 `opx_quality_review_submit` 提交。即使无 issue，也必须提交 passed=true。
 
 禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_tool_review_submit`、`opx_task_review_submit` 等任何其它编排工具。

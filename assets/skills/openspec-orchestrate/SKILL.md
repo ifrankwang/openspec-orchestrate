@@ -35,11 +35,11 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 
 | 工具 | 用途 |
 |------|------|
-| `opx_orch_init` | 初始化编排会话。同 changeId 可重复调用，仅重建当前组。支持 recovery 参数恢复进度。 |
+| `opx_orch_init` | 初始化编排会话。同 changeId 可重复调用，仅重建当前组。支持 recovery 参数恢复进度。recovery 支持 `review_layer` 参数（tool/task/quality）跳过已完成的 review 子层，以及 dev_impl/review 恢复时自动补 executionBoundary。 |
 | `opx_orch_set_worktree` | 确保 worktree 就绪。参数可选，自动按规范创建/复用。 |
 | `opx_orch_resolve_review` | 重试超上限后据用户决策推进：continue 重置重试与进度；giveup 豁免后标记 review 完成。 |
 | `opx_orch_complete_task_group` | 任务组收尾：合分支 + 清理 worktree/分支 + 推进阶段。合并冲突时中止并返回 blocked。 |
-| `opx_status` | 只读状态/上下文查询。按 `context.agent` 角色路由返回对应上下文。 |
+| `opx_status` | 只读状态/上下文查询。按 `context.agent` 角色路由返回对应上下文。对非编排者角色执行阶段门禁检查，未轮到执行的角色会收到 ⛔ 拒绝消息。 |
 | `opx_tool_review_submit` | **tool review**：跨维 tool issues + UT 结果 + 修复确认 + 豁免裁定。仅 openspec-reviewer-tool 调用。 |
 | `opx_task_review_submit` | **task review**：task verified/rejected + 服务/接口验收 + 测试审查。仅 openspec-reviewer-task 调用。 |
 | `opx_quality_review_submit` | **quality review**：维度按调用者身份自动推导。仅 5 维 quality reviewer 调用。 |
@@ -89,6 +89,8 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 ```
 
 `recovery` 参数按 phase 恢复阶段状态（< phase 为 `completed`，== phase 为 `in_progress`）。同 changeId 可重复调用，仅重建当前组。部分启动过的组须编排者通过 `opx_orch_init(recovery=...)` 显式恢复。
+
+初始化或恢复完成后，分派子代理前先调用 `opx_status` 确认当前处于对应阶段/层。编排者视图包含当前阶段和 review 子层进度，确保不跳阶段或错层分派。
 
 ### Phase 1: 架构师复核（task_analysis）
 

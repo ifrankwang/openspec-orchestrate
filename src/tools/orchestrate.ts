@@ -154,10 +154,13 @@ interface DevPhaseData {
 }
 
 function deriveDevStatus(dp: DevPhaseData): "developing" | "validating" {
-  const allDone = dp.tasks.every(
+  const allTasksDone = dp.tasks.every(
     (t) => t.status === "skipped" || t.status === "verified" || t.status === "submitted"
   )
-  return allDone ? "validating" : "developing"
+  const noBlockingIssues = !dp.issues.some(
+    (i) => (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
+  )
+  return allTasksDone && noBlockingIssues ? "validating" : "developing"
 }
 
 interface ReviewPhaseData {
@@ -246,11 +249,11 @@ function isBlockingIssue(i: { severity: string }): boolean {
   return (BLOCKING_SEVERITIES as readonly string[]).includes(i.severity)
 }
 
-// 存在待确认修复（submitted）issue 的维度集
-function dimsWithSubmittedIssue(tg: TaskGroupState): Set<string> {
+// 存在待确认修复（submitted）或待裁定豁免（exemption）issue 的维度集
+function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
   const dims = new Set<string>()
   for (const i of tg.phases.review.issues) {
-    if (i.status === "submitted") dims.add(i.dimension)
+    if (i.status === "submitted" || i.status === "exemption") dims.add(i.dimension)
   }
   return dims
 }
@@ -260,7 +263,7 @@ function dimsWithSubmittedIssue(tg: TaskGroupState): Set<string> {
 function computeRequiredDims(tg: TaskGroupState): ReviewDimension[] {
   const all = [...REVIEW_DIMENSIONS] as ReviewDimension[]
   if (tg.phases.review.retryCount === 0) return all
-  const dims = dimsWithSubmittedIssue(tg)
+  const dims = dimsWithPendingAction(tg)
   return all.filter((d) => dims.has(d))
 }
 
@@ -575,8 +578,7 @@ function issueSummary(issues: IssueItem[]): Record<string, number> {
 
 function renderTaskItem(t: TaskItem): string {
   const trace = t.specTrace ? ` [spec:${t.specTrace}]` : ""
-  const num = t.taskNumber ? `（tasks.md ${t.taskNumber}）` : ""
-  return `- Task id=${t.id}${num} ｜ ${t.title}${trace}`
+  return `- Task id=${t.id} ｜ ${t.title}${trace}`
 }
 
 function renderIssueItem(i: IssueItem): string {
@@ -885,11 +887,6 @@ function renderReviewerView(state: OrchestrateState, tg: TaskGroupState, agent: 
     const open = tg.phases.developer_implement.tasks.filter((t) => t.status === "open")
     if (open.length === 0) lines.push("- (无)")
     else for (const t of open) lines.push(renderTaskItem(t))
-    lines.push("")
-    lines.push(
-      "> ⚠️ `verified_task_ids`/`failed_task_ids` 必须填 Task id 列（`id=` 后的数字），**不是** tasks.md 编号。填错 id 会导致验证失败，工具将按非法 id 报错。",
-      ""
-    )
   } else {
     const same = tg.phases.review.issues.filter((i) => i.dimension === dimension && i.status === "open")
     lines.push("## 本维度 Issue (open)", "")
@@ -1446,64 +1443,6 @@ export const arch_submit = tool({
 })
 
 // ═══════════════════════════════════════════════════════════
-//  工具: opx_arch_exempt_review
-// ═══════════════════════════════════════════════════════════
-
-const exemptReviewItem = tool.schema.object({
-  issue_id: tool.schema.string().min(1).describe("申请豁免的 issue ID"),
-  decision: tool.schema.enum(["grant", "reject"]).describe("grant=批准豁免；reject=驳回"),
-  reason: tool.schema.string().min(1).describe("裁定理由"),
-})
-
-export const arch_exempt_review = tool({
-  description:
-    "架构师 Phase 3（review 阶段收尾）对 developer 申请豁免的 issue 进行裁定。grant 置 exempted，reject 置 rejected（developer 必须修复，不可二次申请豁免）。",
-  args: {
-    task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
-    reviews: tool.schema.array(exemptReviewItem).min(1).describe("裁定清单"),
-  },
-  async execute(args, context) {
-    assertAgent(context, "opx_arch_exempt_review", ["openspec-architect"])
-    const state = await readStateByWorktree(context.worktree)
-    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.currentTaskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：当前活跃任务组为 "${state.currentTaskGroupId}"，收到的是 "${args.task_group_id}"。`)
-    }
-    const tg = findTaskGroup(state, args.task_group_id)
-    if (tg.status !== "review") {
-      throw new Error(`阶段顺序错误：当前阶段为 "${tg.status}"，豁免复核需在 review 阶段进行中调用。`)
-    }
-    const granted: string[] = []
-    const rejected: string[] = []
-    for (const r of args.reviews) {
-      const issue = tg.phases.review.issues.find((i) => i.id === r.issue_id)
-      if (!issue) throw new Error(`issue #${r.issue_id} 不在任务组 ${args.task_group_id} 的 issue 清单中。`)
-      if (issue.status !== "exemption") {
-        throw new Error(`issue #${r.issue_id} 当前 status="${issue.status}"，仅 exemption 状态的 issue 可被裁定。`)
-      }
-      if (r.decision === "grant") {
-        issue.status = "exempted"
-        granted.push(r.issue_id)
-      } else {
-        issue.status = "rejected"
-        rejected.push(r.issue_id)
-      }
-    }
-    await writeState(context.worktree, state)
-    return JSON.stringify(
-      {
-        status: "ok",
-        granted,
-        rejected,
-        message: `裁定完成：批准 ${granted.length} 项、驳回 ${rejected.length} 项。`,
-      },
-      null,
-      2
-    )
-  },
-})
-
-// ═══════════════════════════════════════════════════════════
 //  工具: opx_dev_submit
 // ═══════════════════════════════════════════════════════════
 
@@ -1569,6 +1508,20 @@ export const dev_submit = tool({
           issue.status = "submitted"
         }
       }
+      // Phase 2 豁免申请
+      const p2ExemptReqs = args.request_exempts || []
+      for (const r of p2ExemptReqs) {
+        const issue = tg.phases.developer_implement.issues.find((i) => i.id === r.issue_id)
+        if (!issue) throw new Error(`issue #${r.issue_id} 不在任务组 ${args.task_group_id} 的 issue 清单中。`)
+        if (issue.status === "exempted") {
+          throw new Error(`issue #${r.issue_id} 已被豁免，无需重复申请。`)
+        }
+        if (issue.status === "verified") {
+          throw new Error(`issue #${r.issue_id} 已通过验证，无需申请豁免。`)
+        }
+        issue.status = "exemption"
+        issue.exemptReason = r.reason
+      }
       // Phase 2 issue 完成度门禁：Low+ 的 open/rejected 必须全部修复
       const remainingPhase2 = tg.phases.developer_implement.issues.filter(
         (i) => (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
@@ -1579,7 +1532,9 @@ export const dev_submit = tool({
             remainingPhase2.map((i) => `#${i.id}(${i.severity})`).join("; ")
         )
       }
-      nextMsg = "请分派 validator 验证 task 产出和工具合规性"
+      nextMsg = p2ExemptReqs.length > 0
+        ? "请分派 validator 裁定 Phase 2 issue 豁免申请"
+        : "请分派 validator 验证 task 产出和工具合规性"
     } else {
       // Issue 修复模式：处理 fixed_issue_ids + request_exempts
       const fixedIds = args.fixed_issue_ids || []
@@ -1597,7 +1552,7 @@ export const dev_submit = tool({
           throw new Error(`issue #${r.issue_id} 已被豁免，无需重复申请。`)
         }
         if (issue.status === "rejected") {
-          throw new Error(`issue #${r.issue_id} 的豁免申请已被架构师驳回，必须修复，不可二次申请豁免。`)
+          throw new Error(`issue #${r.issue_id} 的豁免申请已被驳回，必须修复，不可二次申请豁免。`)
         }
         if (issue.status === "verified") {
           throw new Error(`issue #${r.issue_id} 已通过验证，无需申请豁免。`)
@@ -1618,7 +1573,7 @@ export const dev_submit = tool({
       }
       requiredDims = computeRequiredDims(tg)
       nextMsg = requestedIds.length > 0
-        ? `请分派 architect 裁定豁免申请，同时分派 reviewer 确认已修复 issue`
+        ? `请分派对应 reviewer 裁定豁免申请，同时分派 reviewer 确认已修复 issue`
         : "请分派各 reviewer 重新审查"
     }
 
@@ -1650,20 +1605,29 @@ const taskVerifyItem = tool.schema.object({
 
 export const reviewer_submit = tool({
   description:
-    "审核人统一提交。dimension=task 由 validator 使用，验证 task 产出；dimension=style/architecture/performance/security/maintainability/test 由对应的 reviewer 使用，提交审查结果。",
+    "审核人统一提交。维度由调用者身份自动识别：validator 验证 task 产出，reviewer 提交代码审查结果+豁免裁定。",
   args: {
     task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
-    dimension: tool.schema.enum(ALL_DIMENSIONS).describe("审核维度（task/style/architecture/performance/security/maintainability/test）"),
     verified_task_ids: tool.schema.array(tool.schema.string()).optional().describe("dimension=task 时：已验证完成的 task ID 列表"),
     failed_task_ids: tool.schema.array(taskVerifyItem).optional().describe("dimension=task 时：未完成的 task 列表"),
     passed: tool.schema.boolean().optional().describe("非 task 维度：本维度是否通过"),
     issues: tool.schema.array(reviewIssue).optional().describe("问题清单（代码维度：新报审查 issue；task 维度：validator 上报工具违规）"),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
+    exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表（列入即豁免，未列入的 exemption 项自动驳回）"),
     test_results: tool.schema.string().optional().describe("dimension=test 时必填：mvn test 摘要"),
   },
   async execute(args, context) {
-    const expectedAgent = DIMENSION_AGENT_MAP[args.dimension]
-    assertAgent(context, "opx_reviewer_submit", [expectedAgent])
+    // 从调用者身份推导维度
+    const agentToDim = Object.fromEntries(
+      Object.entries(DIMENSION_AGENT_MAP).map(([dim, agent]) => [agent, dim])
+    )
+    const dimension = agentToDim[context.agent]
+    if (!dimension) {
+      throw new Error(
+        `工具 "opx_reviewer_submit" 不支持调用者 "${context.agent}"。` +
+        `仅支持：${Object.values(DIMENSION_AGENT_MAP).join(", ")}。`
+      )
+    }
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
     if (state.currentTaskGroupId !== args.task_group_id) {
@@ -1672,7 +1636,7 @@ export const reviewer_submit = tool({
     const tg = findTaskGroup(state, args.task_group_id)
 
     // ── Task 维度：Validator 验证 task ──
-    if (args.dimension === TASK_DIM) {
+    if (dimension === TASK_DIM) {
       if (tg.status !== "developer_implement") {
         throw new Error(`task 维度提交需在 developer_implement 阶段调用，当前阶段为 "${tg.status}"。`)
       }
@@ -1691,7 +1655,7 @@ export const reviewer_submit = tool({
         throw new Error(
           `非法 task id：${[...unknownVerified.map((id) => `"${id}"`), ...unknownFailed.map((f) => `"${f.task_id}"`)].join(", ")}。` +
           `合法 id：${Array.from(validIds).join(", ")}。` +
-          `注意：id 是 Task id 列的数字（如 "1"），不是 tasks.md 编号（如 "3.1"）。`
+           `注意：id 是 Task id 列的数字（如 "1"），请通过 opx_status 确认正确的 task id。`
         )
       }
 
@@ -1768,6 +1732,17 @@ export const reviewer_submit = tool({
           issue.status = "rejected"
         }
       }
+      // Phase 2 豁免裁定
+      const exemptPhase2Ids = args.exempt_issue_ids || []
+      for (const id of exemptPhase2Ids) {
+        const issue = tg.phases.developer_implement.issues.find((i) => i.id === id)
+        if (issue && issue.status === "exemption") issue.status = "exempted"
+      }
+      for (const issue of tg.phases.developer_implement.issues) {
+        if (issue.status === "exemption" && !exemptPhase2Ids.includes(issue.id)) {
+          issue.status = "rejected"
+        }
+      }
       // 回写 tasks.md checkbox
       if (verified.length > 0 && tg.worktreePath) {
         await updateTasksMdForVerifiedTasks(tg.worktreePath, state.changeId, tasks, verified)
@@ -1800,8 +1775,8 @@ export const reviewer_submit = tool({
       throw new Error(`代码维度提交需在 review 阶段调用，当前阶段为 "${tg.status}"。`)
     }
 
-    if (tg.phases.review.progress[args.dimension as ReviewDimension].submitted) {
-      throw new Error(`维度 "${args.dimension}" 的审查报告已提交，不允许重复提交。`)
+    if (tg.phases.review.progress[dimension as ReviewDimension].submitted) {
+      throw new Error(`维度 "${dimension}" 的审查报告已提交，不允许重复提交。`)
     }
 
     const passed = args.passed === true
@@ -1817,7 +1792,18 @@ export const reviewer_submit = tool({
     }
     // §6 省略即驳回：本维度内未被 fixed_issue_ids 确认的 submitted issue → rejected（视为驳回该修复）
     for (const issue of tg.phases.review.issues) {
-      if (issue.dimension === args.dimension && issue.status === "submitted" && !fixedIds.includes(issue.id)) {
+      if (issue.dimension === dimension && issue.status === "submitted" && !fixedIds.includes(issue.id)) {
+        issue.status = "rejected"
+      }
+    }
+    // §7 豁免裁定：本维度内未被 exempt_issue_ids 确认的 exemption → rejected
+    const exemptIds = args.exempt_issue_ids || []
+    for (const id of exemptIds) {
+      const issue = tg.phases.review.issues.find((i) => i.id === id)
+      if (issue && issue.status === "exemption") issue.status = "exempted"
+    }
+    for (const issue of tg.phases.review.issues) {
+      if (issue.dimension === dimension && issue.status === "exemption" && !exemptIds.includes(issue.id)) {
         issue.status = "rejected"
       }
     }
@@ -1828,7 +1814,7 @@ export const reviewer_submit = tool({
     let dedupedCount = 0
     const newIssues: IssueItem[] = []
     for (const iss of issues) {
-      if (args.dimension === TEST_DIM) {
+      if (dimension === TEST_DIM) {
         if (!iss.type || !(TEST_ISSUE_TYPES as readonly string[]).includes(iss.type)) {
           throw new Error(`dimension="test" 的 issue 缺少有效 type 字段（可选：${TEST_ISSUE_TYPES.join(", ")}）。`)
         }
@@ -1837,13 +1823,13 @@ export const reviewer_submit = tool({
         }
       } else {
         if (!iss.suggestion || typeof iss.suggestion !== "string" || iss.suggestion.trim() === "") {
-          throw new Error(`dimension="${args.dimension}" 的 issue 必须提供非空 suggestion。`)
+          throw new Error(`dimension="${dimension}" 的 issue 必须提供非空 suggestion。`)
         }
       }
       // §6 确定性去重：dimension+file+line+description 全等匹配时跳过（仅与 open/submitted/rejected 状态比对）
       const isDuplicate = tg.phases.review.issues.some(
         (existing) =>
-          existing.dimension === args.dimension &&
+          existing.dimension === dimension &&
           existing.file === iss.file &&
           existing.line === iss.line &&
           existing.description === iss.description &&
@@ -1855,7 +1841,7 @@ export const reviewer_submit = tool({
       }
       newIssues.push({
         id: String(nextIssueId++),
-        dimension: args.dimension as Dimension,
+        dimension: dimension as Dimension,
         severity: iss.severity,
         file: iss.file,
         line: iss.line,
@@ -1863,8 +1849,8 @@ export const reviewer_submit = tool({
         suggestion: iss.suggestion || iss.root_cause_guess || "",
         status: "open",
         firstRound: tg.phases.review.retryCount + 1,
-        type: args.dimension === TEST_DIM ? iss.type : null,
-        rootCauseGuess: args.dimension === TEST_DIM ? iss.root_cause_guess : null,
+        type: dimension === TEST_DIM ? iss.type : null,
+        rootCauseGuess: dimension === TEST_DIM ? iss.root_cause_guess : null,
         exemptReason: null,
       })
     }
@@ -1878,10 +1864,10 @@ export const reviewer_submit = tool({
         if (entry !== "." && entry !== "" && !dirs.includes(entry)) dirs.push(entry)
       }
     }
-    tg.phases.review.progress[args.dimension as ReviewDimension] = { submitted: true, passed }
+    tg.phases.review.progress[dimension as ReviewDimension] = { submitted: true, passed }
     await writeState(context.worktree, state)
-    const testResults = args.dimension === TEST_DIM ? (args.test_results || "") : ""
-    const resultStr = await finalizeOrPartial(state, tg, args.dimension as ReviewDimension, passed, context, testResults)
+    const testResults = dimension === TEST_DIM ? (args.test_results || "") : ""
+    const resultStr = await finalizeOrPartial(state, tg, dimension as ReviewDimension, passed, context, testResults)
     if (dedupedCount > 0) {
       const result = JSON.parse(resultStr)
       result.deduped = dedupedCount
@@ -1909,7 +1895,7 @@ async function finalizeOrPartial(
   // 未解决的 Low+ open/rejected 不进门禁——否则"某维度未被分派却被要求提交"会 partial 死锁
   //（如 architect 驳回未分派维度的 exemption→rejected）；改由下方 hasResidualBlocking 强制 rejected 另起一轮。
   const allDims = Object.keys(tg.phases.review.progress) as ReviewDimension[]
-  const submittedDims = dimsWithSubmittedIssue(tg)
+  const submittedDims = dimsWithPendingAction(tg)
   const requiredDims: ReviewDimension[] =
     tg.phases.review.retryCount === 0
       ? allDims
@@ -1933,9 +1919,9 @@ async function finalizeOrPartial(
   for (const d of requiredDims) {
     if (!tg.phases.review.progress[d].passed) failedDims.push(d)
   }
-  // 残留的 Low+ open/rejected（含 architect 驳回豁免后回退的 rejected）——强制再修一轮，不放行 ok
+  // 残留的 Low+ open/rejected/exemption（未裁定的豁免也视为阻塞）——强制再修一轮，不放行 ok
   const hasResidualBlocking = tg.phases.review.issues.some(
-    (i) => (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
+    (i) => (i.status === "open" || i.status === "rejected" || i.status === "exemption") && isBlockingIssue(i)
   )
 
   if (failedDims.length === 0 && !hasResidualBlocking) {
@@ -1981,7 +1967,7 @@ async function finalizeOrPartial(
     has_residual_blocking: hasResidualBlocking,
     message:
       `审查不通过（第 ${retryCount}/${MAX_RETRIES} 轮）：${reason}。` +
-      `[面向编排者] 1. 若 issues 中存在 status=exemption 的 issue，先分派 openspec-architect 裁定；` +
+      `[面向编排者] 1. 若 issues 中存在 status=exemption 的 issue，先分派对应维度的 reviewer 或 validator 裁定；` +
       `2. 再分派 openspec-developer 修复 open/rejected issue 后调用 opx_dev_submit。`,
   })
 }

@@ -27,7 +27,7 @@ permission:
 
 | 角色 | 子代理 | 职责 |
 |------|------|------|
-| 架构师 | `openspec-architect` | Phase 1 spec/design/tasks 一致性复核；Phase 3 收尾豁免裁定 |
+| 架构师 | `openspec-architect` | Phase 1 spec/design/tasks 一致性复核 |
 | 开发 | `openspec-developer` | Phase 2 实施 task；Phase 3 fixer 模式修复 issue |
 | Validator | `openspec-validator` | Phase 2 确定性门：验证 task 产出 + 执行全量确定性工具检查 |
 | 审核人 | `openspec-reviewer-style` | Phase 3 代码规范维度审查 |

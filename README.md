@@ -69,7 +69,7 @@ tests/                  — Bun test，100% fake-git 无外部依赖
 - **状态持久化**：按 changeId 拆分状态文件，current.json 指针追踪活跃变更
 - **Worktree 隔离**：`git worktree` 分支隔离，自动合并清理
 - **执行边界**：架构师限定 developer 的目录和包范围，reviewer 新报 issue 自动扩展
-- **豁免机制**：issue → developer 申请豁免 → architect 裁定
+- **豁免机制**：issue → developer 申请豁免 → 对应维度 reviewer 通过 `exempt_issue_ids` 裁定
 - **校验守卫**：多维度校验确保流程完整性
 
 ## 关键技术约定

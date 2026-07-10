@@ -72,15 +72,15 @@ permission:
 - `type: "task"` — task 产出不完整
 - `type: "tool"` — 工具违规
 
-### 第四步：豁免申请
+### 第四步：豁免裁定
 
-developer 对无法修复的问题可申请豁免。validator 将豁免申请标记为 `exemption` 状态 issue，由 Phase 3 对应维度的 reviewer 裁定。validator 不裁定豁免。
+developer 可对无法修复的问题申请豁免。你用 `opx_reviewer_submit(exempt_issue_ids=[...])` 裁定——列入即豁免，未列入的 exemption 项驳回。
 
 ### 第五步：循环验证
 
 developer 修复后，validator 重新执行全部工具检查。循环至：
 - 所有 task → verified 或 skipped
-- 所有 tool 类 issue → submitted（等 reviewer 确认）或 exemption（等裁定）
+- 所有 tool 类 issue → verified 或 exempted
 - 所有工具检查通过
 
 满足全部条件 → Phase 2 结束。
@@ -92,7 +92,6 @@ developer 修复后，validator 重新执行全部工具检查。循环至：
 ```json
 {
   "task_group_id": "<任务组 ID>",
-  "dimension": "task",
   "verified_task_ids": ["1", "2", "3"],
   "failed_task_ids": [
     { "task_id": "4", "reason": "产出文件不存在" }
@@ -107,18 +106,13 @@ developer 修复后，validator 重新执行全部工具检查。循环至：
       "suggestion": "在 catch 块中添加日志记录或重新抛出异常"
     }
   ],
-  "fixed_issue_ids": ["15", "22"]
+  "fixed_issue_ids": ["15", "22"],
+  "exempt_issue_ids": ["18"]
 }
 ```
 
-工具行为：
-- `verified_task_ids` 中的 task → verified
-- `failed_task_ids` 中的 task → rejected（回到 developer 修复）
-- 整体判定：全部 task verified → developer_implement.completed → status=review（Phase 2 结束）
-- 有 rejected task → status 回退 developing
-
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_reviewer_submit(dimension="task")`。
+仅可调用：`opx_status`（只读）、`opx_reviewer_submit`。
 
-禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_reviewer_submit(dimension != "task")` 等任何其它编排工具。
+禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_reviewer_submit` 等任何其它编排工具。

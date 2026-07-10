@@ -128,7 +128,7 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 ## 审查流程
 
 1. 调用 `opx_status` 获取 worktree 路径、diff 范围、本维度存量 issue 与豁免申请
-2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified 或驳回
+2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
 3. 审查本维度存量 open issue 和豁免申请：
    - 对豁免申请裁定 grant / reject
    - 对常规 issue 验证 developer 是否已修复
@@ -136,7 +136,7 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 5. AI 语义审查工具无法覆盖的测试维度问题（测试覆盖率、边界用例、Mock 复杂度、断言完整性等）
 6. 运行 `mvn test` 验证
 7. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
-8. 汇总后调用 `opx_reviewer_submit(dimension="test", passed, issues, test_results, fixed_issue_ids?)` 提交
+8. 汇总后调用 `opx_reviewer_submit(passed, issues, test_results, fixed_issue_ids?, exempt_issue_ids?)` 提交
 
 ## 必读文档派生规则
 
@@ -154,7 +154,6 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 ```json
 {
   "task_group_id": "<任务组 ID>",
-  "dimension": "test",
   "passed": false,
   "issues": [
     {
@@ -167,21 +166,21 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
     }
   ],
   "test_results": "<mvn test 完整输出的关键摘要：测试总数 / 通过 / 失败 / 错误>",
-  "fixed_issue_ids": ["15", "22"]
+  "fixed_issue_ids": ["15", "22"],
+  "exempt_issue_ids": ["18", "25"]
 }
 ```
 
-- `passed`：无 Low 及以上问题时为 `true`（仅 Info 可通过）
 - `dimension`：英文枚举 `test`
 - `severity`：Critical / High / Medium / Low / Info
 - `type` 必须为以下五个枚举值之一：`断言放水` / `边界缺失` / `Mock过度` / `覆盖不足` / `其他`
 - `root_cause_guess` 不可为空——必须基于代码分析给出对该问题的系统性根因的猜测
 - `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
+- `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
 
-工具对 JSON 做严格 schema 校验，所有字段必填，`type` 必须为五个枚举值之一，`severity` 必须为五个枚举值之一，`root_cause_guess` 不可为空字符串。
 
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_reviewer_submit(dimension="test")`。
+仅可调用：`opx_status`（只读）。
 
-禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_reviewer_submit(dimension != "test")` 等任何其它编排工具。
+禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*` 等任何其它编排工具。

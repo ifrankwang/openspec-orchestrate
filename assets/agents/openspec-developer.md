@@ -43,7 +43,6 @@ permission:
 | 文档 | 路径 | 阅读范围 |
 |------|------|---------|
 | clarify.md | `openspec/changes/<changeId>/clarify.md` | **架构方向结论**部分 |
-    | tasks.md | `openspec/changes/<changeId>/tasks.md` | 当前任务组完整文本（或直接用 `opx_status` 返回的 task） |
 | design.md | `openspec/changes/<changeId>/design.md` | 全文（200-500 行） |
 | spec/*.md | `opx_status` 返回的 relevantSpecs 中各 spec 路径 | 需求细节和验收标准 |
 | AGENTS.md | 项目根目录 | 全文 |
@@ -74,18 +73,18 @@ permission:
 ### 场景 D: 修复轮（review 阶段不通过后被重新分派）
 
 1. 调用 `opx_status` 查看 issue 清单：
-    - **Issue（待修复）**：open 或 rejected 状态的问题，优先修复（rejected 包含 reviewer 驳回和架构师驳回豁免两种场景，均不可再申请豁免）
-    - **Issue（豁免裁定中）**：exemption 状态，等待架构师裁决，本轮跳过不修
+    - **Issue（待修复）**：open 或 rejected 状态的问题，优先修复
+    - **Issue（豁免裁定中）**：exemption 状态，等待对应维度 reviewer 裁定，本轮跳过不修
     - 已 verified / 已 exempted 的 issue 不展示，无需关注
-2. 修复完成后 **先 commit**，再调 `opx_dev_submit(fixed_issue_ids=...)`（工具校验 `git status --porcelain` 必须 clean）
-3. 对不可修的 issue 调用 `opx_dev_submit(request_exempts=[{issue_id, reason}])` 申请豁免：issue 标记为 `exemption` 状态交架构师裁定；已被驳回的 issue 不可二次申请豁免（工具会拦截并报错）
+2. 修复完成后 **先 commit**，再调 `opx_dev_submit(fixed_issue_ids=...)`
+3. 对不可修的 issue 调用 `opx_dev_submit(request_exempts=[...])` 申请豁免，交对应维度 reviewer 裁定
 
 ### 场景 E: Fixer 模式（Phase 2 已结束，仅在 Phase 3 被分派）
 
 Phase 2 中所有 task 已完成、`status=review` 后，你的角色从 developer 切换为 **fixer**。fixer 的职责不同于 developer：
 
 1. **不实现 task**：task 全部在 Phase 2 中完成，fixer 不接触 task
-2. **仅修复 issue**：修复 reviewer 提出的 issue（open / rejected 状态）；Low 及以上必须修复或申请豁免，Info 级可选（不阻塞 `opx_dev_submit`）
+2. **仅修复 issue**：修复 reviewer 提出的 issue（open / rejected 状态），按工具错误消息处理
 3. **修复范围自动覆盖被标记文件**：reviewer 报 issue 时，工具已把 issue 指向文件的目录并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停
 4. **实施工具规则改进**：若 issue 的 `suggestion` 中包含 `[tool_eligible]` 标记和具体的规则草案，按草案实施工具配置变更
 5. 修复完成后 commit + 调 `opx_dev_submit(fixed_issue_ids=...)`（不带 `request_exempts`）
@@ -102,8 +101,7 @@ Phase 2 中所有 task 已完成、`status=review` 后，你的角色从 develop
 
 1. **逐条推进**：按 task 项的顺序逐个实现
 2. **最小改动**：每次改动聚焦当前子任务，不超出 `opx_status` 返回的执行边界
-3. **不要标对勾**：在 tasks.md 中标记 `[x]` 由 `openspec-validator` 提交后通过 `opx_reviewer_submit(dimension="task", verified_task_ids)` 自动完成——工具回写 tasks.md 并 commit，你**不要**自行编辑 tasks.md
-4. **暂停条件**：
+3. **暂停条件**：
    - 子任务需求模糊不清 → 暂停
    - 实现过程中发现 design 问题 → 暂停
    - 遇到技术阻塞不可自行解决 → 暂停
@@ -127,7 +125,7 @@ Phase 2 中所有 task 已完成、`status=review` 后，你的角色从 develop
 
 ## 最终提交（opx_dev_submit）
 
-完成所有可修内容后，必须先 commit（worktree git status clean）后调用 `opx_dev_submit`：
+完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit`。工具会按当前阶段自动识别需提交的内容（task 或 issue），出错时按工具错误消息处理。
 
 ```json
 {
@@ -138,15 +136,6 @@ Phase 2 中所有 task 已完成、`status=review` 后，你的角色从 develop
   ]
 }
 ```
-
-工具行为：
-- 校验 worktree `git status --porcelain` clean（未 commit → throw，请先 commit）
-- 通过 `git diff --name-only <baseRef>..HEAD` 计算 `lastFilesChanged` 持久化（你不需要传 files_changed）
-- status=developer_implement 时：所有 open/rejected task 标记为 submitted，developer_implement 切换为 validating（若仍残留 open/rejected task 则拒绝提交并列出）
-- status=review 时：`fixed_issue_ids` 中对应 issue 置 submitted；`request_exempts` 中每项置 exemption
-- 已 exempted 的 issue 二次申请会 throw
-
-当前 phases 由工具自动识别，你只需提交正确的 `fixed_issue_ids` 和 `request_exempts`。
 
 ## 工具调用边界
 

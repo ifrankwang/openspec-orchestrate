@@ -12,7 +12,6 @@ import {
   init,
   set_worktree,
   arch_submit,
-  arch_exempt_review,
   dev_submit,
   reviewer_submit,
   __setGitRunner,
@@ -44,7 +43,7 @@ async function setupToReview(wt: string, fakeGit: FakeGitRunner) {
   fakeGit.diffs.set(wt, ["src/T.java"])
   await dev_submit.execute({ task_group_id: "1" }, d)
   await reviewer_submit.execute({
-    task_group_id: "1", dimension: "task", verified_task_ids: ["1", "2"], failed_task_ids: [],
+    task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
   }, v)
 }
 
@@ -94,11 +93,11 @@ describe("G2. 身份守卫", () => {
     fakeGit.diffs.set(wt, ["src/T.java"])
     await dev_submit.execute({ task_group_id: "1" }, d)
     await reviewer_submit.execute({
-      task_group_id: "1", dimension: "task", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
     }, v)
 
     await expect(
-      reviewer_submit.execute({ task_group_id: "1", dimension: "style", passed: true, issues: [] }, a)
+      reviewer_submit.execute({ task_group_id: "1", passed: true, issues: [] }, a)
     ).rejects.toThrow(/openspec-reviewer-style/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
@@ -126,12 +125,12 @@ describe("G3. 重复提交守卫", () => {
     fakeGit.diffs.set(wt, ["src/T.java"])
     await dev_submit.execute({ task_group_id: "1" }, d)
     await reviewer_submit.execute({
-      task_group_id: "1", dimension: "task", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
     }, v)
 
-    await reviewer_submit.execute({ task_group_id: "1", dimension: "style", passed: true, issues: [] }, s)
+    await reviewer_submit.execute({ task_group_id: "1", passed: true, issues: [] }, s)
     await expect(
-      reviewer_submit.execute({ task_group_id: "1", dimension: "style", passed: true, issues: [] }, s)
+      reviewer_submit.execute({ task_group_id: "1", passed: true, issues: [] }, s)
     ).rejects.toThrow(/不允许重复提交/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
@@ -183,7 +182,7 @@ describe("G5. 非法 task id 守卫", () => {
 
     await expect(
       reviewer_submit.execute({
-        task_group_id: "1", dimension: "task",
+        task_group_id: "1", 
         verified_task_ids: ["99"], failed_task_ids: [],
       }, v)
     ).rejects.toThrow(/非法 task id/)
@@ -214,7 +213,7 @@ describe("G6. validator 完整性门禁", () => {
 
     await expect(
       reviewer_submit.execute({
-        task_group_id: "1", dimension: "task",
+        task_group_id: "1", 
         verified_task_ids: [], failed_task_ids: [],
       }, v)
     ).rejects.toThrow(/以下 submitted task 未被/)
@@ -243,7 +242,7 @@ describe("G7. validator 非法 task id in failed_task_ids", () => {
 
     await expect(
       reviewer_submit.execute({
-        task_group_id: "1", dimension: "task",
+        task_group_id: "1", 
         verified_task_ids: ["1"], failed_task_ids: [{ task_id: "999", reason: "Invalid" }],
       }, v)
     ).rejects.toThrow(/非法 task id/)
@@ -252,8 +251,8 @@ describe("G7. validator 非法 task id in failed_task_ids", () => {
   })
 })
 
-describe("G8. validator 走代码维度", () => {
-  test("validator 调 reviewer_submit 走代码维度 → throws", async () => {
+describe("G8. validator 在 review 阶段调用", () => {
+  test("review 阶段 validator 调 reviewer_submit → throws（task 维度需在 developer_implement 阶段）", async () => {
     const root = `/tmp/guard-g8-${Date.now()}`
     const wt = setupWt(root, join(root, "w"))
     const fakeGit = new FakeGitRunner()
@@ -270,12 +269,12 @@ describe("G8. validator 走代码维度", () => {
     fakeGit.diffs.set(wt, ["src/T.java"])
     await dev_submit.execute({ task_group_id: "1" }, d)
     await reviewer_submit.execute({
-      task_group_id: "1", dimension: "task", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
     }, v)
 
     await expect(
-      reviewer_submit.execute({ task_group_id: "1", dimension: "style", passed: true, issues: [] }, v)
-    ).rejects.toThrow(/openspec-reviewer-style/)
+      reviewer_submit.execute({ task_group_id: "1", passed: true, issues: [] }, v)
+    ).rejects.toThrow(/task 维度提交需在 developer_implement 阶段/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -295,7 +294,7 @@ describe("G9. dev_submit 非法参数", () => {
 
     await setupToReview(wt, fakeGit)
     await reviewer_submit.execute({
-      task_group_id: "1", dimension: "style", passed: false,
+      task_group_id: "1", passed: false,
       issues: [{ severity: "Low", file: "x.java", line: 1, description: "Style", suggestion: "Fix" }],
     }, sCtx)
 
@@ -320,19 +319,29 @@ describe("G10. 重复操作守卫", () => {
     const sCtx = makeCtx("openspec-reviewer-style", wt)
 
     await setupToReview(wt, fakeGit)
-    await reviewer_submit.execute({
-      task_group_id: "1", dimension: "style", passed: false,
-      issues: [{ severity: "Low", file: "x.java", line: 1, description: "Style", suggestion: "Fix" }],
-    }, sCtx)
+
+    // Submit all 6 dims: style fails, others pass → triggers retry
+    const dims = ["style", "architecture", "performance", "security", "maintainability", "test"]
+    for (let i = 0; i < dims.length; i++) {
+      const args: any = { task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }
+      if (dims[i] === "style") {
+        args.passed = false
+        args.issues = [{ severity: "Low", file: "x.java", line: 1, description: "Style", suggestion: "Fix" }]
+      }
+      if (dims[i] === "test") args.test_results = "all ok"
+      await reviewer_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt))
+    }
 
     const base = join(wt, ".opencode", ".orchestrate_state", `${CID}.json`)
     let state = JSON.parse(readFileSync(base, "utf-8"))
     const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
 
     await dev_submit.execute({ task_group_id: "1", request_exempts: [{ issue_id: issueId, reason: "Lib" }] }, d)
-    await arch_exempt_review.execute({
-      task_group_id: "1", reviews: [{ issue_id: issueId, decision: "grant", reason: "Ok" }],
-    }, a)
+    // Style reviewer grants exemption via exempt_issue_ids (progress reset by retry)
+    await reviewer_submit.execute({
+      task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [],
+      exempt_issue_ids: [issueId],
+    }, sCtx)
 
     await expect(
       dev_submit.execute({ task_group_id: "1", request_exempts: [{ issue_id: issueId, reason: "Again" }] }, d)
@@ -357,7 +366,7 @@ describe("G11. reviewer_submit 代码维度参数验证", () => {
     await setupToReview(wt, fakeGit)
     await expect(
       reviewer_submit.execute({
-        task_group_id: "1", dimension: "test", passed: false, test_results: "failed",
+        task_group_id: "1", passed: false, test_results: "failed",
         issues: [{ severity: "High", file: "x.java", line: 1, description: "Test fail", suggestion: "Fix" }],
       }, tCtx)
     ).rejects.toThrow(/type/)
@@ -375,7 +384,7 @@ describe("G11. reviewer_submit 代码维度参数验证", () => {
     await setupToReview(wt, fakeGit)
     await expect(
       reviewer_submit.execute({
-        task_group_id: "1", dimension: "test", passed: false, test_results: "failed",
+        task_group_id: "1", passed: false, test_results: "failed",
         issues: [{ severity: "High", file: "x.java", line: 1, type: "覆盖不足", description: "Missing test", suggestion: "Add" }],
       }, tCtx)
     ).rejects.toThrow(/root_cause_guess/)
@@ -393,7 +402,7 @@ describe("G11. reviewer_submit 代码维度参数验证", () => {
     await setupToReview(wt, fakeGit)
     await expect(
       reviewer_submit.execute({
-        task_group_id: "1", dimension: "style", passed: false,
+        task_group_id: "1", passed: false,
         issues: [{ severity: "Low", file: "x.java", line: 1, description: "Issue without suggestion" }],
       }, sCtx)
     ).rejects.toThrow(/suggestion/)

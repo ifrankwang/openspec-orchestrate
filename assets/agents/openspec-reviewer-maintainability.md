@@ -65,14 +65,14 @@ permission:
 ## 审查流程
 
 1. 调用 `opx_status` 获取 worktree 路径、diff 范围、本维度存量 issue 与豁免申请
-2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified 或驳回
+2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
 3. 审查本维度存量 open issue 和豁免申请：
    - 对豁免申请裁定 grant / reject
    - 对常规 issue 验证 developer 是否已修复
 4. AI 语义审查工具无法覆盖的可维护性维度问题（异常处理粒度、方法单一职责、资源管理等）
 5. **技术债增量审查**：对照 diff 与既有代码，识别本次变更是否新引入技术债，或既有技术债是否被本次变更扩大化（加长已超标方法、复制坏模式、扩散重复配置、加剧未收敛架构违规等）。按审查内容中的技术债增量标准定级与提 issue，并遵守扩大化提级规则
 6. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
-7. 汇总后调用 `opx_reviewer_submit(dimension="maintainability", passed, issues, fixed_issue_ids?)` 提交
+7. 汇总后调用 `opx_reviewer_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?)` 提交
 
 ## 必读文档派生规则
 
@@ -90,7 +90,6 @@ permission:
 ```json
 {
   "task_group_id": "<任务组 ID>",
-  "dimension": "maintainability",
   "passed": false,
   "issues": [
     {
@@ -102,17 +101,17 @@ permission:
       "suggestion": "提取 parseInput()、validateInput()、execute()、persistResult() 四个 private 方法"
     }
   ],
-  "fixed_issue_ids": ["15", "22"]
+  "fixed_issue_ids": ["15", "22"],
+  "exempt_issue_ids": ["18", "25"]
 }
 ```
 
-- `passed`：无 Low 及以上问题时为 `true`（仅 Info 可通过）
-- `dimension`（顶层和 issue 内）：英文枚举 `maintainability`
+- `dimension`（issue 内）：英文枚举 `maintainability`
 - `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
-- 工具对 JSON 做严格 schema 校验
+- `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
 
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_reviewer_submit(dimension="maintainability")`。
+仅可调用：`opx_status`（只读）。
 
-禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_reviewer_submit(dimension != "maintainability")` 等任何其它编排工具。
+禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*` 等任何其它编排工具。

@@ -2125,6 +2125,15 @@ export const task_review_submit = tool({
     tg.phases.review.task.completed = true
     await writeState(context.worktree, state)
 
+    // 无待审 task 时自动跳过
+    if (submittedTasks.length === 0 && verified.length === 0 && failed.length === 0 && !hasBlockingIssues(tg.issues)) {
+      return JSON.stringify({
+        status: "ok",
+        phase: "review(task=completed)",
+        message: "task 层审核通过（本轮无待审 task，自动跳过）。",
+      })
+    }
+
     // 推进判定
     const allPassed = verified.length > 0 && failed.length === 0
     const hasBlocking = hasBlockingIssues(tg.issues)

@@ -1148,3 +1148,94 @@ describe("13. 去阶段化 — dev 在 dev_impl 状态下可见 review issue", (
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ═══════════════════════════════════════════════════
+//  Scenario 14: Task review auto-skip — issue-fix round
+// ═══════════════════════════════════════════════════
+
+describe("14. Task review auto-skip — issue-fix round", () => {
+  test("quality 报 issue → 修复提交 → task 层自动跳过", async () => {
+    const root = `/tmp/ft14-${Date.now()}`
+    const wt = (() => {
+      const w = root + "/w"
+      mkdirSync(join(w, "openspec", "changes", CID), { recursive: true })
+      writeFileSync(join(w, "openspec", "changes", CID, "tasks.md"),
+        "## 1. G1\n\n- [ ] 1.1 T1 [spec:s1]\n- [ ] 1.2 T2 [spec:s2]\n", "utf-8")
+      return w
+    })()
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    // --- 1. First full review cycle: tool+task passed, quality style fails ---
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    let state = readStateSync(wt, CID)
+    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+
+    state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
+    const issueArgs: any = { task_group_id: "1", passed: true, issues: [] }
+    issueArgs.passed = false
+    issueArgs.issues = [{ severity: "Low", file: "src/x.java", line: 1, description: "Fix naming", suggestion: "Rename" }]
+    await quality_review_submit.execute(issueArgs, makeCtx("openspec-reviewer-style", wt))
+    for (let i = 1; i < dims.length; i++) {
+      await quality_review_submit.execute({ task_group_id: "1", passed: true, issues: [] }, makeCtx(`openspec-reviewer-${dims[i]}`, wt))
+    }
+
+    // --- 2. After quality fail → dev_impl ---
+    state = readStateSync(wt, CID)
+    const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgAfter.status).toBe("dev_impl")
+    expect(tgAfter.issues).toHaveLength(1)
+    const issueId = tgAfter.issues[0].id
+
+    // --- 3. Developer fixes the issue → status=review, no submitted tasks ---
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1", fixed_issue_ids: [issueId] }, d)
+
+    state = readStateSync(wt, CID)
+    const tgFix = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgFix.status).toBe("review")
+    expect(tgFix.phases.review.task.completed).toBe(false)
+    expect(tgFix.tasks.every((t: any) => t.status === "verified")).toBe(true)
+
+    // --- 4. Tool review passes (with fixed issue) ---
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [issueId] }, toolR)
+
+    // --- 5. Task review with no verified/failed tasks → auto-skip ---
+    const result = JSON.parse(await task_review_submit.execute({
+      task_group_id: "1",
+      // No verified_task_ids or failed_task_ids — all tasks already verified
+    }, taskR))
+    expect(result.status).toBe("ok")
+    expect(result.phase).toBe("review(task=completed)")
+    expect(result.message).toContain("自动跳过")
+
+    // --- 6. State reflects auto-completed task layer ---
+    state = readStateSync(wt, CID)
+    const tgFinal = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgFinal.phases.review.task.completed).toBe(true)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  try { rmSync(root, { recursive: true, force: true }) } catch {}
+})

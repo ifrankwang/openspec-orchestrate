@@ -10,7 +10,9 @@ import {
   complete_task_group,
   arch_submit,
   dev_submit,
-  reviewer_submit,
+  tool_review_submit,
+  task_review_submit,
+  quality_review_submit,
   resolve_review,
 } from "./tools/orchestrate.js"
 
@@ -27,7 +29,9 @@ export const OpenspecOrchestratePlugin: Plugin = async () => {
       opx_orch_complete_task_group: complete_task_group,
       opx_arch_submit: arch_submit,
       opx_dev_submit: dev_submit,
-      opx_reviewer_submit: reviewer_submit,
+      opx_tool_review_submit: tool_review_submit,
+      opx_task_review_submit: task_review_submit,
+      opx_quality_review_submit: quality_review_submit,
       opx_orch_resolve_review: resolve_review,
       opx_skill: tool({
         description: "Load a bundled orchestration skill by name",

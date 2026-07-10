@@ -19,8 +19,8 @@ permission:
 - worktree 路径 / 分支 / diff 范围
 - 执行边界（允许目录 / 允许包 / 备注）
 - 相关 spec 文件清单
-- 当前阶段（developer_implement 或 review）
-- developer_implement 阶段：Task（待完成 / 待验证 / 已驳回）
+- 当前阶段（dev_impl 或 review）
+- dev_impl 阶段：Task（待完成 / 待验证 / 已驳回）
 - review 阶段（fixer 模式）：Issue（待修复） / Issue（豁免裁定中）
 
 `opx_status` 不会返回审核进度等与你无关的信息。
@@ -81,9 +81,9 @@ permission:
 
 ### 场景 E: Fixer 模式（Phase 2 已结束，仅在 Phase 3 被分派）
 
-Phase 2 中所有 task 已完成、`status=review` 后，你的角色从 developer 切换为 **fixer**。fixer 的职责不同于 developer：
+Phase 2 中 dev_impl 已完成、`status=review` 后，你的角色从 developer 切换为 **fixer**。fixer 的职责不同于 developer：
 
-1. **不实现 task**：task 全部在 Phase 2 中完成，fixer 不接触 task
+1. **不实现 task**：task 全部在 Phase 2 dev_impl 中完成，fixer 不接触 task
 2. **仅修复 issue**：修复 reviewer 提出的 issue（open / rejected 状态），按工具错误消息处理
 3. **修复范围自动覆盖被标记文件**：reviewer 报 issue 时，工具已把 issue 指向文件的目录并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停
 4. **实施工具规则改进**：若 issue 的 `suggestion` 中包含 `[tool_eligible]` 标记和具体的规则草案，按草案实施工具配置变更

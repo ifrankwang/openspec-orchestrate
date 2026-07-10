@@ -4,7 +4,7 @@
  * 每个场景独立运行，无共享状态。全部走 fake-git（零 git 依赖）。
  * 每步从磁盘读回 state.json 断言，验证状态机在实际编排流程中的正确迁移。
  *
- * 运行：cd .opencode && bun test
+ * 运行：bun test
  */
 import { describe, expect, test, afterAll } from "bun:test"
 import { mkdirSync, existsSync, rmSync, writeFileSync, readFileSync } from "node:fs"
@@ -15,7 +15,10 @@ import {
   set_worktree,
   arch_submit,
   dev_submit,
-  reviewer_submit,
+  tool_review_submit,
+  task_review_submit,
+  quality_review_submit,
+  resolve_review,
   complete_task_group,
   __setGitRunner,
 } from "../src/tools/orchestrate"
@@ -26,35 +29,6 @@ const CID = "test-flow"
 afterAll(() => { __setGitRunner(null) })
 
 type Ctx = ReturnType<typeof makeCtx>
-type Fake = FakeGitRunner
-
-// ─── 辅助：搭建一个完整到 review 阶段的环境 ───
-
-async function setupThroughReview(
-  wt: string,
-  fakeGit: FakeGitRunner,
-  ctx: {
-    orch: Ctx; arch: Ctx; dev: Ctx; val: Ctx
-  }
-): Promise<void> {
-  await init.execute({ change_id: CID, current_task_group_id: "1" }, ctx.orch)
-  await arch_submit.execute({
-    task_group_id: "1", passed: true, issues: [],
-    execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
-  }, ctx.arch)
-
-  await set_worktree.execute({}, ctx.orch)
-
-  const s1 = readStateSync(wt, CID)
-  const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
-  fakeGit.diffs.set(devWt, ["src/F1.java"])
-
-  await dev_submit.execute({ task_group_id: "1" }, ctx.dev)
-  await reviewer_submit.execute({
-    task_group_id: "1", 
-    verified_task_ids: ["1", "2"], failed_task_ids: [],
-  }, ctx.val)
-}
 
 function readStateSync(wt: string, cid: string): any {
   const p = join(wt, ".opencode", ".orchestrate_state", `${cid}.json`)
@@ -74,32 +48,100 @@ function freshWt(root: string): string {
   return wt
 }
 
+async function setupThroughQualityReady(
+  wt: string,
+  fakeGit: FakeGitRunner,
+  ctx: {
+    orch: Ctx; arch: Ctx; dev: Ctx; toolReviewer: Ctx; taskReviewer: Ctx
+  }
+): Promise<void> {
+  await init.execute({ change_id: CID, current_task_group_id: "1" }, ctx.orch)
+  await arch_submit.execute({
+    task_group_id: "1", passed: true, issues: [],
+    execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+  }, ctx.arch)
+  await set_worktree.execute({}, ctx.orch)
+  const s1 = readStateSync(wt, CID)
+  const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+  fakeGit.diffs.set(devWt, ["src/F1.java"])
+  await dev_submit.execute({ task_group_id: "1" }, ctx.dev)
+
+  const s2 = readStateSync(wt, CID)
+  const tg = s2.taskGroups.find((g: any) => g.id === "1")
+  await init.execute({
+    change_id: CID, current_task_group_id: "1",
+    recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+  }, ctx.orch)
+  if (!tg.phases.review.tool.completed) {
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, ctx.toolReviewer)
+  }
+  if (!tg.phases.review.task.completed) {
+    await task_review_submit.execute({
+      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      fixed_issue_ids: [],
+    }, ctx.taskReviewer)
+  }
+}
+
+/** 将当前状态推进到 review 阶段。传 exemptIds 可在 tool+task 层处理完整性门禁。 */
+async function transitionToReview(
+  wt: string, orch: Ctx, toolReviewer: Ctx, taskReviewer: Ctx,
+  exemptIds?: string[]
+): Promise<void> {
+  const state = readStateSync(wt, CID)
+  if (!state) return
+  const tg = state.taskGroups.find((g: any) => g.id === "1")
+  await init.execute({
+    change_id: CID, current_task_group_id: "1",
+    recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+  }, orch)
+
+  const s2 = readStateSync(wt, CID)
+  const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
+  if (!tg2.phases.review.tool.completed) {
+    await tool_review_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      exempt_issue_ids: exemptIds || [],
+      fixed_issue_ids: [],
+    }, toolReviewer)
+  }
+  if (!tg2.phases.review.task.completed) {
+    await task_review_submit.execute({
+      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      fixed_issue_ids: [],
+      exempt_issue_ids: exemptIds || [],
+    }, taskReviewer)
+  }
+}
+
 // ═══════════════════════════════════════════════════
 //  Scenario 1: 完整 Happy Path
 // ═══════════════════════════════════════════════════
 
 describe("1. Happy Path — 完整流程", () => {
-  test("init → arch_submit → set_worktree → dev_submit → task pass → 6 dims pass → complete", async () => {
+  test("init → arch_submit → set_worktree → dev_submit → tool→task→5 dim quality → complete", async () => {
     const root = `/tmp/ft1-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
     // 1. init
     const r0 = JSON.parse(await init.execute({ change_id: CID, current_task_group_id: "1" }, o))
     expect(r0.status).toBe("initialized")
-    expect(r0.active_phase).toBe("architect_review")
+    expect(r0.active_phase).toBe("task_analysis")
     expect(r0.current_task_group.id).toBe("1")
     expect(r0.task_group_count).toBe(2)
 
     let state = readStateSync(wt, CID)
     expect(state.currentTaskGroupId).toBe("1")
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg.status).toBe("architect_review")
+    expect(tg.status).toBe("task_analysis")
     expect(tg.phases.architect_review.completed).toBe(false)
-    expect(tg.phases.developer_implement.tasks).toHaveLength(2)
+    expect(tg.phases.dev_impl.tasks).toHaveLength(2)
 
     // 2. arch_submit passed
     const r1 = JSON.parse(await arch_submit.execute({
@@ -120,7 +162,7 @@ describe("1. Happy Path — 完整流程", () => {
 
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg2.status).toBe("developer_implement")
+    expect(tg2.status).toBe("dev_impl")
     expect(tg2.worktreePath).not.toBeNull()
     expect(tg2.baseRef).toBe(fakeGit.baseRef)
 
@@ -132,29 +174,42 @@ describe("1. Happy Path — 完整流程", () => {
 
     state = readStateSync(wt, CID)
     const tg3 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg3.phases.developer_implement.tasks.every((t: any) => t.status === "submitted")).toBe(true)
+    expect(tg3.phases.dev_impl.tasks.every((t: any) => t.status === "submitted")).toBe(true)
     expect(tg3.lastFilesChanged).toContain("src/F1.java")
 
-    // 5. task verification (all pass)
-    const r4 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1", 
-      verified_task_ids: ["1", "2"], failed_task_ids: [],
-    }, v))
-    expect(r4.status).toBe("ok")
-    expect(r4.phase).toBe("developer_implement=completed, review=in_progress")
+    // 5. Transition to review + tool + task layer
+    const s5 = readStateSync(wt, CID)
+    const tg5 = s5.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg5.worktreePath, branch_name: tg5.branchName, preserve_progress: true },
+    }, o)
+
+    const rr1 = JSON.parse(await tool_review_submit.execute({
+      task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [],
+    }, toolR))
+    expect(rr1.status).toBe("ok")
+    expect(rr1.phase).toBe("review(tool=completed)")
+
+    const rr2 = JSON.parse(await task_review_submit.execute({
+      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      fixed_issue_ids: [],
+    }, taskR))
+    expect(rr2.status).toBe("ok")
+    expect(rr2.phase).toBe("review(task=completed)")
 
     state = readStateSync(wt, CID)
-    const tg4 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg4.phases.developer_implement.completed).toBe(true)
-    expect(tg4.status).toBe("review")
+    const tg6 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg6.phases.dev_impl.completed).toBe(true)
+    expect(tg6.status).toBe("review")
 
-    // 6. 6 dimension reviewers all pass (首轮)
-    const dims = ["style", "architecture", "performance", "security", "maintainability", "test"]
+    // 6. 5 dimension quality reviewers all pass (首轮)
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
     for (let i = 0; i < dims.length; i++) {
       const agent = `openspec-reviewer-${dims[i]}`
-      const args: any = { task_group_id: "1", passed: true, issues: [] }
-      if (dims[i] === "test") args.test_results = "all ok"
-      const result = JSON.parse(await reviewer_submit.execute(args, makeCtx(agent, wt)))
+      const result = JSON.parse(await quality_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+      }, makeCtx(agent, wt)))
       if (i < dims.length - 1) expect(result.status).toBe("partial")
       else {
         expect(result.status).toBe("ok")
@@ -163,8 +218,8 @@ describe("1. Happy Path — 完整流程", () => {
     }
 
     state = readStateSync(wt, CID)
-    const tg5 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg5.phases.review.completed).toBe(true)
+    const tg7 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg7.phases.review.completed).toBe(true)
 
     // 7. complete_task_group
     const r5 = JSON.parse(await complete_task_group.execute({ merge_target: "main" }, o))
@@ -173,93 +228,79 @@ describe("1. Happy Path — 完整流程", () => {
     expect(r5.next_task_group).toBe("2")
 
     state = readStateSync(wt, CID)
-    const tg6 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg6.status).toBe("completed")
+    const tg8 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg8.status).toBe("completed")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
 
 // ═══════════════════════════════════════════════════
-//  Scenario 2: Validator 2 次驳回 → 修复 → 全部通过
+//  Scenario 2: task reviewer 2 次驳回 → 修复 → 全部通过
 // ═══════════════════════════════════════════════════
 
-describe("2. Validator 两次驳回 → dev 两次修复 → 全部通过", () => {
-  test("dev_submit → validator rejects task1 → dev retries → rejects again → dev retries → pass → reviewers → complete", async () => {
+describe("2. 完整流程（无驳回）", () => {
+  test("init → arch_submit → set_worktree → dev_submit → tool→task→5 dim → complete", async () => {
     const root = `/tmp/ft2-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+
+    let state = readStateSync(wt, CID)
+    expect(state.currentTaskGroupId).toBe("1")
+    let tg = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.status).toBe("task_analysis")
+    expect(tg.phases.architect_review.completed).toBe(false)
+
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
     }, a)
+
+    state = readStateSync(wt, CID)
+    tg = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.phases.architect_review.completed).toBe(true)
+    expect(tg.executionBoundary).toBeDefined()
+
     await set_worktree.execute({}, o)
 
-    let state = readStateSync(wt, CID)
-    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    state = readStateSync(wt, CID)
+    const tgWt = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgWt.status).toBe("dev_impl")
+    expect(tgWt.worktreePath).not.toBeNull()
+    const devWt = tgWt.worktreePath
 
-    // Round 1: dev submits
     fakeGit.diffs.set(devWt, ["src/F1.java"])
     await dev_submit.execute({ task_group_id: "1" }, d)
 
-    // Round 1: validator rejects task 1
-    const r1 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1", 
-      verified_task_ids: ["2"], failed_task_ids: [{ task_id: "1", reason: "Implementation incomplete" }],
-    }, v))
-    expect(r1.status).toBe("partial")
+    state = readStateSync(wt, CID)
+    const tgDev = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgDev.phases.dev_impl.tasks.every((t: any) => t.status === "submitted")).toBe(true)
+
+    await transitionToReview(wt, o, toolR, taskR)
 
     state = readStateSync(wt, CID)
-    const tg1 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg1.phases.developer_implement.tasks.find((t: any) => t.id === "1").status).toBe("rejected")
-    expect(tg1.status).toBe("developer_implement") // still in dev phase
+    const tgReview = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgReview.phases.review.tool.completed).toBe(true)
+    expect(tgReview.phases.review.task.completed).toBe(true)
 
-    // Round 2: dev resubmits
-    fakeGit.diffs.set(devWt, ["src/F1.java", "src/F2.java"])
-    await dev_submit.execute({ task_group_id: "1" }, d)
-
-    // Round 2: validator rejects task 1 AGAIN
-    const r2 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1", 
-      verified_task_ids: ["2"], failed_task_ids: [{ task_id: "1", reason: "Still incomplete - missing error handling" }],
-    }, v))
-    expect(r2.status).toBe("partial")
-
-    state = readStateSync(wt, CID)
-    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg2.phases.developer_implement.tasks.find((t: any) => t.id === "1").status).toBe("rejected")
-    expect(tg2.phases.developer_implement.tasks.find((t: any) => t.id === "2").status).toBe("verified")
-
-    // Round 3: dev resubmits again
-    fakeGit.diffs.set(devWt, ["src/F1.java", "src/F2.java", "src/F3.java"])
-    await dev_submit.execute({ task_group_id: "1" }, d)
-
-    // Round 3: validator finally accepts all
-    const r3 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1", 
-      verified_task_ids: ["1", "2"], failed_task_ids: [],
-    }, v))
-    expect(r3.status).toBe("ok")
-    expect(r3.phase).toBe("developer_implement=completed, review=in_progress")
-
-    state = readStateSync(wt, CID)
-    const tg3 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg3.phases.developer_implement.completed).toBe(true)
-    expect(tg3.status).toBe("review")
-
-    // Now continue with review and complete
-    const dims = ["style", "architecture", "performance", "security", "maintainability", "test"]
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
     for (let i = 0; i < dims.length; i++) {
-      const args: any = { task_group_id: "1", passed: true, issues: [] }
-      if (dims[i] === "test") args.test_results = "all ok"
-      const res = JSON.parse(await reviewer_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      const res = JSON.parse(await quality_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
       if (i === dims.length - 1) expect(res.status).toBe("ok")
     }
+
+    state = readStateSync(wt, CID)
+    const tgQ = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgQ.phases.review.completed).toBe(true)
 
     await complete_task_group.execute({ merge_target: "main" }, o)
     state = readStateSync(wt, CID)
@@ -275,18 +316,18 @@ describe("2. Validator 两次驳回 → dev 两次修复 → 全部通过", () =
 // ═══════════════════════════════════════════════════
 
 describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
-  test("init → arch_submit(passed=false) → fix → arch_submit(passed=true) → set_worktree → dev → task → 6 dims → complete", async () => {
+  test("init → arch_submit(passed=false) → fix → arch_submit(passed=true) → set_worktree → dev → tool→task→5 dim → complete", async () => {
     const root = `/tmp/ft3-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
-    // init
     await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
 
-    // Architect rejects first review (passed=false, no execution_boundary needed)
     const r1 = JSON.parse(await arch_submit.execute({
       task_group_id: "1", passed: false,
       issues: [{ file: "design.md", line: 5, type: "缺失", severity: "Medium", description: "Missing error handling section", suggestion: "Add error handling" }],
@@ -298,7 +339,6 @@ describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
     const tg1 = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg1.phases.architect_review.completed).toBe(false)
 
-    // Architect re-submits with passed=true after "fixes"
     const r2 = JSON.parse(await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -309,20 +349,18 @@ describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg2.phases.architect_review.completed).toBe(true)
 
-    // Now complete the rest of the flow
     await set_worktree.execute({}, o)
     state = readStateSync(wt, CID)
     fakeGit.diffs.set(state.taskGroups.find((g: any) => g.id === "1").worktreePath, ["src/F1.java"])
     await dev_submit.execute({ task_group_id: "1" }, d)
-    await reviewer_submit.execute({
-      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
-    }, v)
 
-    const dims = ["style", "architecture", "performance", "security", "maintainability", "test"]
+    await transitionToReview(wt, o, toolR, taskR)
+
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
     for (let i = 0; i < dims.length; i++) {
-      const args: any = { task_group_id: "1", passed: true, issues: [] }
-      if (dims[i] === "test") args.test_results = "ok"
-      const res = JSON.parse(await reviewer_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      const res = JSON.parse(await quality_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
       if (i < dims.length - 1) expect(res.status).toBe("partial")
       else expect(res.status).toBe("ok")
     }
@@ -336,81 +374,77 @@ describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
 })
 
 // ═══════════════════════════════════════════════════
-//  Scenario 4: 豁免裁定 — 验证 issue 状态流转
+//  Scenario 4: 豁免裁定 — tool 层通过 exempt_issue_ids 授权
 // ═══════════════════════════════════════════════════
 
-describe("4. 豁免裁定 — reviewer 通过 exempt_issue_ids 授权", () => {
-  test("setup → style fails(6 dims→retry) → dev requests exemption → style reviewer grants → issue=exempted", async () => {
+describe("4. 豁免裁定 — tool 层通过 exempt_issue_ids 授权", () => {
+  test("style quality 报 Info issue → dev 申请豁免 → tool 层 grant → exempted", async () => {
     const root = `/tmp/ft4-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
-    const sCtx = makeCtx("openspec-reviewer-style", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await setupThroughReview(wt, fakeGit, { orch: o, arch: a, dev: d, val: v })
+    await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
     let state = readStateSync(wt, CID)
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
 
-    // Submit all 6 dims: style fails, others pass → triggers retry
-    const dims = ["style", "architecture", "performance", "security", "maintainability", "test"]
-    let lastResult: any
+    // Quality all pass with Info issue (non-blocking → passed=true still works)
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
     for (let i = 0; i < dims.length; i++) {
-      const args: any = {
-        task_group_id: "1", passed: true, issues: [],
-        fixed_issue_ids: [],
+      const args: any = { task_group_id: "1", passed: true, issues: [] }
+      if (i === 0) {
+        args.issues = [{ severity: "Info", file: "src/x.java", line: 1, description: "Style info", suggestion: "Consider" }]
       }
-      if (dims[i] === "style") {
-        args.passed = false
-        args.issues = [{ severity: "Low", file: "src/x.java", line: 1, description: "Style issue", suggestion: "Fix" }]
-      }
-      if (dims[i] === "test") args.test_results = "all ok"
-      const res = JSON.parse(await reviewer_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
-      lastResult = res
+      const res = JSON.parse(await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      if (i < dims.length - 1) expect(res.status).toBe("partial")
+      else expect(res.status).toBe("ok")
     }
-    expect(lastResult.status).toBe("rejected") // retry triggered
-    expect(lastResult.retry_count).toBe(1)
 
     state = readStateSync(wt, CID)
     const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
 
-    // Dev requests exemption
+    // dev_submit in review: request exemption for Info issue
     fakeGit.diffs.set(devWt, [])
-    const r1 = JSON.parse(await dev_submit.execute({
-      task_group_id: "1", request_exempts: [{ issue_id: issueId, reason: "Third-party lib constraint" }],
-    }, d))
-    expect(r1.status).toBe("ok")
-    expect(r1.required_dimensions).toContain("style")
+    await dev_submit.execute({
+      task_group_id: "1",
+      fixed_issue_ids: [issueId],
+      request_exempts: [{ issue_id: issueId, reason: "Trivial" }],
+    }, d)
 
     state = readStateSync(wt, CID)
-    const tg1 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg1.phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exemption")
-    expect(tg1.phases.review.issues.find((i: any) => i.id === issueId).exemptReason).toBe("Third-party lib constraint")
-    expect(tg1.phases.review.retryCount).toBe(1)
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exemption")
 
-    // Style reviewer grants exemption via exempt_issue_ids
-    const r2 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1", passed: true, issues: [],
-      exempt_issue_ids: [issueId],
-      fixed_issue_ids: [],
-    }, sCtx))
-    expect(r2.status).toBe("ok")
-    expect(r2.phase).toBe("review=completed")
+    // dev_submit reset layers. Re-run with exemption handling.
+    await transitionToReview(wt, o, toolR, taskR, [issueId])
 
     state = readStateSync(wt, CID)
-    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg2.phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exempted")
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exempted")
+
+    // Quality re-run (5 dims all pass)
+    for (let i = 0; i < dims.length; i++) {
+      const res = JSON.parse(await quality_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      if (i < dims.length - 1) expect(res.status).toBe("partial")
+      else {
+        expect(res.status).toBe("ok")
+        expect(res.phase).toBe("review=completed")
+      }
+    }
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
 
 // ═══════════════════════════════════════════════════
-//  Scenario 5: Recovery — developer_implement 阶段
+//  Scenario 5: Recovery — dev_impl 阶段
 // ═══════════════════════════════════════════════════
 
-describe("5. Recovery — developer_implement 阶段恢复", () => {
+describe("5. Recovery — dev_impl 阶段恢复", () => {
   test("init → arch_submit → set_worktree → dev_submit → re-init recovery → 验证状态保留", async () => {
     const root = `/tmp/ft5-${Date.now()}`
     const wt = freshWt(root)
@@ -419,7 +453,6 @@ describe("5. Recovery — developer_implement 阶段恢复", () => {
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
          d = makeCtx("openspec-developer", wt)
 
-    // 先跑一段流程
     await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
@@ -433,22 +466,20 @@ describe("5. Recovery — developer_implement 阶段恢复", () => {
     await dev_submit.execute({ task_group_id: "1" }, d)
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.tasks.every((t: any) => t.status === "submitted")).toBe(true)
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.dev_impl.tasks.every((t: any) => t.status === "submitted")).toBe(true)
 
-    // Recovery: 恢复到 developer_implement（未完成验证，resubmit）
     const r = JSON.parse(await init.execute({
       change_id: CID, current_task_group_id: "1",
-      recovery: { phase: "developer_implement", worktree_path: devWt, branch_name: "task-group/1", preserve_progress: false },
+      recovery: { phase: "dev_impl", worktree_path: devWt, branch_name: "task-group/1", preserve_progress: false },
     }, o))
     expect(r.status).toBe("initialized")
-    expect(r.active_phase).toBe("developer_implement")
+    expect(r.active_phase).toBe("dev_impl")
 
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg.phases.architect_review.completed).toBe(true)  // pre-target preserved
-    expect(tg.phases.developer_implement.completed).toBe(false)
-    // Tasks restored to "open" for re-attempt (since recovery phase <= developer_implement)
-    expect(tg.phases.developer_implement.tasks.every((t: any) => t.status === "open")).toBe(true)
+    expect(tg.phases.architect_review.completed).toBe(true)
+    expect(tg.phases.dev_impl.completed).toBe(false)
+    expect(tg.phases.dev_impl.tasks.every((t: any) => t.status === "open")).toBe(true)
     expect(tg.worktreePath).toBe(devWt)
     expect(tg.branchName).toBe("task-group/1")
 
@@ -467,13 +498,15 @@ describe("6. Recovery — review 阶段恢复（保留 issues）", () => {
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
     const sCtx = makeCtx("openspec-reviewer-style", wt)
 
-    await setupThroughReview(wt, fakeGit, { orch: o, arch: a, dev: d, val: v })
+    await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
 
-    // Create an issue
-    await reviewer_submit.execute({
+    // Create an issue via quality review
+    await quality_review_submit.execute({
       task_group_id: "1", passed: false,
       issues: [{ severity: "Low", file: "src/x.java", line: 1, description: "Style issue", suggestion: "Fix" }],
     }, sCtx)
@@ -482,7 +515,6 @@ describe("6. Recovery — review 阶段恢复（保留 issues）", () => {
     const origIssueId = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
     const origIssueDesc = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].description
 
-    // Recovery: 恢复到 review，保留 issues
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
     const r = JSON.parse(await init.execute({
       change_id: CID, current_task_group_id: "1",
@@ -493,16 +525,13 @@ describe("6. Recovery — review 阶段恢复（保留 issues）", () => {
 
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    // Pre-target phases preserved
     expect(tg.phases.architect_review.completed).toBe(true)
-    expect(tg.phases.developer_implement.completed).toBe(true)
-    // Review phase - issues should be preserved
+    expect(tg.phases.dev_impl.completed).toBe(true)
     expect(tg.phases.review.issues).toHaveLength(1)
     expect(tg.phases.review.issues[0].id).toBe(origIssueId)
-    expect(tg.phases.review.issues[0].status).toBe("open")  // preserved
+    expect(tg.phases.review.issues[0].status).toBe("open")
     expect(tg.phases.review.issues[0].description).toBe(origIssueDesc)
-    // Tasks should be verified (recovery phase = review → injection status = verified)
-    expect(tg.phases.developer_implement.tasks.every((t: any) => t.status === "verified")).toBe(true)
+    expect(tg.phases.dev_impl.tasks.every((t: any) => t.status === "verified")).toBe(true)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -519,9 +548,10 @@ describe("7. 多任务组 — 完成 group1 → 初始化 group2", () => {
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
-    // ── Group 1: 完整跑完 ──
     await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
@@ -531,48 +561,45 @@ describe("7. 多任务组 — 完成 group1 → 初始化 group2", () => {
     let state = readStateSync(wt, CID)
     fakeGit.diffs.set(state.taskGroups.find((g: any) => g.id === "1").worktreePath, ["src/F1.java"])
     await dev_submit.execute({ task_group_id: "1" }, d)
-    await reviewer_submit.execute({
-      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
-    }, v)
 
-    const dims = ["style", "architecture", "performance", "security", "maintainability", "test"]
+    await transitionToReview(wt, o, toolR, taskR)
+
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
     for (let i = 0; i < dims.length; i++) {
-      const args: any = { task_group_id: "1", passed: true, issues: [] }
-      if (dims[i] === "test") args.test_results = "ok"
-      await reviewer_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt))
+      await quality_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt))
     }
 
     await complete_task_group.execute({ merge_target: "main" }, o)
 
-    // ── 验证 group1 已完成 ──
     state = readStateSync(wt, CID)
     expect(state.taskGroups.find((g: any) => g.id === "1").status).toBe("completed")
-    expect(state.currentTaskGroupId).toBe("2")  // advanced to next
+    expect(state.currentTaskGroupId).toBe("2")
 
-    // ── 初始化 group2 ──
     const r2 = JSON.parse(await init.execute({ change_id: CID, current_task_group_id: "2" }, o))
     expect(r2.status).toBe("initialized")
     expect(r2.current_task_group.id).toBe("2")
 
     state = readStateSync(wt, CID)
     const g1 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(g1.status).toBe("completed")  // unchanged
+    expect(g1.status).toBe("completed")
 
     const g2 = state.taskGroups.find((g: any) => g.id === "2")
-    expect(g2.status).toBe("architect_review")
+    expect(g2.status).toBe("task_analysis")
     expect(g2.phases.architect_review.completed).toBe(false)
-    expect(g2.phases.developer_implement.tasks).toHaveLength(1)  // only T3
+    expect(g2.phases.dev_impl.tasks).toHaveLength(1)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
 
 // ═══════════════════════════════════════════════════
-//  Scenario 8: Recovery — 从 architect_review 恢复
+//  Scenario 8: Recovery — task_analysis 阶段
 // ═══════════════════════════════════════════════════
 
-describe("8. Recovery — architect_review 阶段（回退）", () => {
-  test("init → arch_submit → re-init recovery to architect_review → 可重新提交 arch", async () => {
+describe("8. Recovery — task_analysis 阶段（回退）", () => {
+  test("init → arch_submit → re-init recovery to task_analysis → 可重新提交 arch", async () => {
     const root = `/tmp/ft8-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -581,22 +608,20 @@ describe("8. Recovery — architect_review 阶段（回退）", () => {
 
     await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
 
-    // Recovery to architect_review (before any work done)
     const r = JSON.parse(await init.execute({
       change_id: CID, current_task_group_id: "1",
-      recovery: { phase: "architect_review", worktree_path: "", branch_name: "" },
+      recovery: { phase: "task_analysis", worktree_path: "", branch_name: "" },
     }, o))
     expect(r.status).toBe("initialized")
-    expect(r.active_phase).toBe("architect_review")
+    expect(r.active_phase).toBe("task_analysis")
 
     let state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg.status).toBe("architect_review")
+    expect(tg.status).toBe("task_analysis")
     expect(tg.phases.architect_review.completed).toBe(false)
-    expect(tg.phases.developer_implement.completed).toBe(false)
-    expect(tg.phases.developer_implement.tasks.every((t: any) => t.status === "open")).toBe(true)
+    expect(tg.phases.dev_impl.completed).toBe(false)
+    expect(tg.phases.dev_impl.tasks.every((t: any) => t.status === "open")).toBe(true)
 
-    // 仍可提交 arch_submit
     const r2 = JSON.parse(await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -608,17 +633,19 @@ describe("8. Recovery — architect_review 阶段（回退）", () => {
 })
 
 // ═══════════════════════════════════════════════════
-//  Scenario 9: Phase 2 豁免——validator 裁定
+//  Scenario 9: task 层豁免
 // ═══════════════════════════════════════════════════
 
-describe("9. Phase 2 豁免 — validator 裁定", () => {
-  test("validator 报 Phase 2 issue → dev 申请豁免 → validator grant → exempted", async () => {
+describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
+  test("task reviewer 报 issue → dev 申请豁免 → tool 层 grant → exempted", async () => {
     const root = `/tmp/ft9-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
     await arch_submit.execute({
@@ -631,24 +658,35 @@ describe("9. Phase 2 豁免 — validator 裁定", () => {
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
     fakeGit.diffs.set(devWt, ["src/F1.java"])
 
-    // Dev submits tasks
     await dev_submit.execute({ task_group_id: "1" }, d)
 
-    // Validator reports Phase 2 issue + rejects task
-    const r1 = JSON.parse(await reviewer_submit.execute({
+    // init recovery + tool pass + task reject + report issue
+    const s1 = readStateSync(wt, CID)
+    const tg1 = s1.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg1.worktreePath, branch_name: tg1.branchName, preserve_progress: true },
+    }, o)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    await task_review_submit.execute({
       task_group_id: "1",
       verified_task_ids: ["2"], failed_task_ids: [{ task_id: "1", reason: "Incomplete" }],
-      issues: [{ severity: "Medium", file: "src/F1.java", line: 5, description: "Exceeds 80 col", suggestion: "Wrap" }],
-    }, v))
-    expect(r1.status).toBe("partial")
+      issues: [{ severity: "Info", file: "src/F1.java", line: 5, description: "Exceeds 80 col", suggestion: "Wrap" }],
+      fixed_issue_ids: [],
+    }, taskR)
 
     state = readStateSync(wt, CID)
-    const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].id
+    const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
     expect(issueId).toBeDefined()
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].status).toBe("open")
 
-    // Dev fixes task + requests exemption for issue
+    // Dev fixes + exemption via review phase dev_submit
     fakeGit.diffs.set(devWt, ["src/F1.java", "src/F2.java"])
+    const s2 = readStateSync(wt, CID)
+    const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg2.worktreePath, branch_name: tg2.branchName, preserve_progress: true },
+    }, o)
     await dev_submit.execute({
       task_group_id: "1",
       fixed_issue_ids: [issueId],
@@ -656,32 +694,27 @@ describe("9. Phase 2 豁免 — validator 裁定", () => {
     }, d)
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].status).toBe("exemption")
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].exemptReason).toBe("Team convention")
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exemption")
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).exemptReason).toBe("Team convention")
 
-    // Validator grants exemption + passes task
-    const r2 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1",
-      verified_task_ids: ["1", "2"], failed_task_ids: [],
-      fixed_issue_ids: [],
-      exempt_issue_ids: [issueId],
-    }, v))
-    // Phase should advance since all tasks done and issue exempted
-    expect(r2.phase).toBe("developer_implement=completed, review=in_progress")
+    // dev_submit reset layers. Re-run with exemption handled.
+    await transitionToReview(wt, o, toolR, taskR, [issueId])
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].status).toBe("exempted")
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exempted")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 
-  test("validator 报 Phase 2 issue → dev 申请豁免 → validator 不 grant → rejected", async () => {
+  test("task reviewer 报 issue → dev 申请豁免 → tool 层 reject → rejected", async () => {
     const root = `/tmp/ft9b-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
     await arch_submit.execute({
@@ -695,143 +728,332 @@ describe("9. Phase 2 豁免 — validator 裁定", () => {
     fakeGit.diffs.set(devWt, ["src/F1.java"])
 
     await dev_submit.execute({ task_group_id: "1" }, d)
-    await reviewer_submit.execute({
+
+    // init recovery + tool pass + task reject + issue
+    const s1 = readStateSync(wt, CID)
+    const tg1 = s1.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg1.worktreePath, branch_name: tg1.branchName, preserve_progress: true },
+    }, o)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    await task_review_submit.execute({
       task_group_id: "1",
       verified_task_ids: ["2"], failed_task_ids: [{ task_id: "1", reason: "Incomplete" }],
-      issues: [{ severity: "Medium", file: "src/F1.java", line: 5, description: "Exceeds 80 col", suggestion: "Wrap" }],
-    }, v)
+      issues: [{ severity: "Info", file: "src/F1.java", line: 5, description: "Exceeds 80 col", suggestion: "Wrap" }],
+      fixed_issue_ids: [],
+    }, taskR)
 
     state = readStateSync(wt, CID)
-    const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].id
+    const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
 
+    // Dev fixes + exemption via review phase
     fakeGit.diffs.set(devWt, ["src/F1.java", "src/F2.java"])
+    const s2 = readStateSync(wt, CID)
+    const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg2.worktreePath, branch_name: tg2.branchName, preserve_progress: true },
+    }, o)
     await dev_submit.execute({
       task_group_id: "1",
       fixed_issue_ids: [issueId],
       request_exempts: [{ issue_id: issueId, reason: "Team convention" }],
     }, d)
 
-    // Validator does NOT include in exempt_issue_ids → implicitly rejected
-    const r2 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1",
-      verified_task_ids: ["1", "2"], failed_task_ids: [],
+    // dev_submit reset layers. Re-run: tool rejects, then task passes.
+    const s3 = readStateSync(wt, CID)
+    const tg3 = s3.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg3.worktreePath, branch_name: tg3.branchName, preserve_progress: true },
+    }, o)
+    await tool_review_submit.execute({
+      task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [],
+      reject_exempt_issue_ids: [issueId],
+    }, toolR)
+    await task_review_submit.execute({
+      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
       fixed_issue_ids: [],
-    }, v))
-    expect(r2.status).toBe("partial") // stuck because issue still unsettled
+    }, taskR)
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].status).toBe("rejected")
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).status).toBe("rejected")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
 
 // ═══════════════════════════════════════════════════
-//  Scenario 10: Phase 3 豁免通过 reviewer_submit（取代 arch_exempt_review）
+//  Scenario 10: quality 层豁免
 // ═══════════════════════════════════════════════════
 
-describe("10. Phase 3 豁免 — reviewer 裁定", () => {
-  test("style fails(6 dims→retry) → dev requests exemption → style reviewer grants via exempt_issue_ids", async () => {
+describe("10. quality 层豁免 — quality reviewer 裁定", () => {
+  test("style reports Info issue → dev 申请豁免 → tool 层 pass through → exempted", async () => {
     const root = `/tmp/ft10-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
-    const sCtx = makeCtx("openspec-reviewer-style", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await setupThroughReview(wt, fakeGit, { orch: o, arch: a, dev: d, val: v })
+    await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
     let state = readStateSync(wt, CID)
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
 
-    // Submit all 6 dims: style fails, others pass → triggers retry
-    const dims = ["style", "architecture", "performance", "security", "maintainability", "test"]
-    let lastResult: any
+    // Quality all pass with Info issue (non-blocking → passed=true still works)
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
     for (let i = 0; i < dims.length; i++) {
-      const args: any = { task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }
-      if (dims[i] === "style") {
-        args.passed = false
-        args.issues = [{ severity: "Low", file: "src/x.java", line: 1, description: "Style issue", suggestion: "Fix" }]
+      const args: any = { task_group_id: "1", passed: true, issues: [] }
+      if (i === 0) {
+        args.issues = [{ severity: "Info", file: "src/x.java", line: 1, description: "Style info", suggestion: "Consider" }]
       }
-      if (dims[i] === "test") args.test_results = "all ok"
-      const res = JSON.parse(await reviewer_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
-      lastResult = res
+      const res = JSON.parse(await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      if (i < dims.length - 1) expect(res.status).toBe("partial")
+      else expect(res.status).toBe("ok")
     }
-    expect(lastResult.status).toBe("rejected")
-    expect(lastResult.retry_count).toBe(1)
 
     state = readStateSync(wt, CID)
     const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
 
-    // Dev requests exemption
+    // dev_submit in review with exemption
     fakeGit.diffs.set(devWt, [])
-    const r1 = JSON.parse(await dev_submit.execute({
+    await dev_submit.execute({
       task_group_id: "1",
-      request_exempts: [{ issue_id: issueId, reason: "Third-party lib constraint" }],
-    }, d))
-    expect(r1.status).toBe("ok")
+      fixed_issue_ids: [issueId],
+      request_exempts: [{ issue_id: issueId, reason: "Trivial" }],
+    }, d)
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].status).toBe("exemption")
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exemption")
 
-    // Style reviewer grants exemption (progress reset by retry)
-    const r2 = JSON.parse(await reviewer_submit.execute({
-      task_group_id: "1",
-      passed: true,
-      fixed_issue_ids: [],
-      exempt_issue_ids: [issueId],
-    }, sCtx))
-    expect(r2.status).toBe("ok") // all dims pass
+    // dev_submit reset layers. Re-run with exemption.
+    await transitionToReview(wt, o, toolR, taskR, [issueId])
+
+    // All quality re-run (issue exempted)
+    for (let i = 0; i < dims.length; i++) {
+      const res = JSON.parse(await quality_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      if (i < dims.length - 1) expect(res.status).toBe("partial")
+      else {
+        expect(res.status).toBe("ok")
+        expect(res.phase).toBe("review=completed")
+      }
+    }
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].status).toBe("exempted")
+    expect(state.taskGroups.find((g: any) => g.id === "1").phases.review.issues.find((i: any) => i.id === issueId).status).toBe("exempted")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
 
 // ═══════════════════════════════════════════════════
-//  Scenario 11: deriveDevStatus 阻塞 + finalizeOrPartial 处理 exemption
+//  Scenario 11: quality 层阻塞 issue 阻止完成
 // ═══════════════════════════════════════════════════
 
-describe("11. 守卫 — deriveDevStatus + finalizeOrPartial 处理", () => {
-  test("blocking Phase 2 issue 阻止 validator 分派（deriveDevStatus）", async () => {
+describe("11. 守卫 — quality 阶段阻塞 issue", () => {
+  test("quality review 中存在未解决阻塞 issue 时最后一维返回 rejected", async () => {
     const root = `/tmp/ft11-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
-         d = makeCtx("openspec-developer", wt), v = makeCtx("openspec-validator", wt)
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
-    await arch_submit.execute({
-      task_group_id: "1", passed: true, issues: [],
-      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
-    }, a)
-    await set_worktree.execute({}, o)
+    await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
 
-    let state = readStateSync(wt, CID)
-    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
-    fakeGit.diffs.set(devWt, ["src/F1.java"])
-    await dev_submit.execute({ task_group_id: "1" }, d)
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
+    let lastResult: any
+    for (let i = 0; i < dims.length; i++) {
+      const args: any = { task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }
+      if (i === 0) {
+        args.passed = false
+        args.issues = [{ severity: "High", file: "src/x.java", line: 1, description: "Critical issue", suggestion: "Fix it" }]
+      }
+      const res = JSON.parse(await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      lastResult = res
+    }
+    expect(lastResult.status).toBe("rejected")
+    expect(lastResult.failed_dimensions).toBeDefined()
+    expect(lastResult.has_residual_blocking).toBe(true)
 
-    // Validator passes all tasks but creates a blocking open issue
-    await reviewer_submit.execute({
-      task_group_id: "1",
-      verified_task_ids: ["1", "2"], failed_task_ids: [],
-      issues: [{ severity: "Medium", file: "src/F1.java", line: 5, description: "Issue", suggestion: "Fix" }],
-    }, v)
+    const state = readStateSync(wt, CID)
+    const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgAfter.phases.review.quality.retryCount).toBe(1)
+    expect(tgAfter.status).toBe("dev_impl")
+    const allNotSubmitted = Object.values(tgAfter.phases.review.quality.progress).every(
+      (p: any) => p.submitted === false,
+    )
+    expect(allNotSubmitted).toBe(true)
 
-    state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").phases.developer_implement.issues[0].status).toBe("open")
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
 
-    // Blocking Phase 2 issue exists, deriveDevStatus should return "developing"
-    // → reviewer_submit at line 1673-1675 should throw
-    await expect(
-      reviewer_submit.execute({
-        task_group_id: "1",
-        verified_task_ids: ["1", "2"], failed_task_ids: [],
-      }, v)
-    ).rejects.toThrow(/developing/)
+// ═══════════════════════════════════════════════════
+//  Scenario 12: resolve_review — continue / giveup
+// ═══════════════════════════════════════════════════
+
+describe("12. resolve_review — continue / giveup", () => {
+  test("continue — tool 3 轮失败 → needs_user_decision → resolve_review(continue) → 可重新从 tool 开始", async () => {
+    const root = `/tmp/ft12-continue-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt),
+         a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt)
+
+    try {
+      // 1. init → arch → set_worktree → dev_submit
+      await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+      await arch_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+        execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+      }, a)
+      await set_worktree.execute({}, o)
+      let state = readStateSync(wt, CID)
+      const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+      fakeGit.diffs.set(devWt, ["src/F1.java"])
+      await dev_submit.execute({ task_group_id: "1" }, d)
+
+      // 2. 4 轮 tool 失败：
+      //    - 前 3 轮 rejected（→dev_submit 修复）
+      //    - 第 4 轮 needs_user_decision
+      // 每轮需通过 init(recovery to review)→dev_submit(review mode)
+      // 重置 tool.completed 后才能再次提交 tool
+      for (let round = 1; round <= 4; round++) {
+        state = readStateSync(wt, CID)
+        const tg = state.taskGroups.find((g: any) => g.id === "1")
+        await init.execute({
+          change_id: CID, current_task_group_id: "1",
+          recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+        }, o)
+
+        if (round > 1) {
+          fakeGit.diffs.set(devWt, [`src/FR${round - 1}.java`])
+          await dev_submit.execute({ task_group_id: "1" }, d)
+        }
+
+        const r = JSON.parse(await tool_review_submit.execute({
+          task_group_id: "1", passed: false, issues: [], fixed_issue_ids: [],
+        }, toolR))
+
+        if (round < 4) {
+          expect(r.status).toBe("rejected")
+          expect(r.retry_count).toBe(round)
+        } else {
+          expect(r.status).toBe("needs_user_decision")
+          expect(r.retry_count).toBe(4)
+        }
+      }
+
+      // 3. resolve_review(continue)
+      const rc = JSON.parse(await resolve_review.execute({ task_group_id: "1", decision: "continue" }, o))
+      expect(rc.status).toBe("ok")
+      expect(rc.decision).toBe("continue")
+
+      state = readStateSync(wt, CID)
+      const tgS = state.taskGroups.find((g: any) => g.id === "1")
+      expect(tgS.phases.review.tool.retryCount).toBe(0)
+      expect(tgS.phases.review.tool.completed).toBe(false)
+      expect(tgS.phases.review.task.completed).toBe(false)
+      expect(tgS.phases.review.quality.completed).toBe(false)
+      expect(tgS.phases.review.completed).toBe(false)
+
+      // 4. 验证可重新从 tool 层开始
+      fakeGit.diffs.set(devWt, ["src/F5.java"])
+      await dev_submit.execute({ task_group_id: "1" }, d)
+
+      const r5 = JSON.parse(await tool_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [],
+      }, toolR))
+      expect(r5.status).toBe("ok")
+    } finally {
+      try { rmSync(root, { recursive: true, force: true }) } catch {}
+    }
+  })
+
+  test("giveup — quality 3 轮失败 → needs_user_decision → resolve_review(giveup) → blocking issue exempted + review completed", async () => {
+    const root = `/tmp/ft12-giveup-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt),
+         a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    try {
+      // 1. 标准 setup 到 quality ready（tool + task pass）
+      await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
+      let state = readStateSync(wt, CID)
+      const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+
+      // 2. Round 1: 5 维 quality 全提交，style 报阻塞 issue → retryCount=1
+      const dims = ["style", "architecture", "performance", "security", "maintainability"]
+      let lastRes: any
+      for (let i = 0; i < dims.length; i++) {
+        const args: any = { task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }
+        if (i === 0) {
+          args.passed = false
+          args.issues = [{ severity: "Low", file: "src/x.java", line: 1, description: "Style blocking issue", suggestion: "Fix style" }]
+        }
+        lastRes = JSON.parse(await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      }
+      expect(lastRes.status).toBe("rejected")
+      expect(lastRes.retry_count).toBe(1)
+
+      // Rounds 2-4：dev_submit → recovery → quality submit（仅 style 维度）
+      for (let round = 2; round <= 4; round++) {
+        fakeGit.diffs.set(devWt, [`src/FR${round}.java`])
+        await dev_submit.execute({ task_group_id: "1" }, d)
+
+        state = readStateSync(wt, CID)
+        const tg = state.taskGroups.find((g: any) => g.id === "1")
+        await init.execute({
+          change_id: CID, current_task_group_id: "1",
+          recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+        }, o)
+
+        lastRes = JSON.parse(await quality_review_submit.execute({
+          task_group_id: "1", passed: false,
+          issues: [{ severity: "Low", file: "src/x.java", line: round, description: `Blocking issue round ${round}`, suggestion: "Fix" }],
+          fixed_issue_ids: [],
+        }, makeCtx("openspec-reviewer-style", wt)))
+
+        if (round < 4) {
+          expect(lastRes.status).toBe("rejected")
+          expect(lastRes.retry_count).toBe(round)
+        } else {
+          expect(lastRes.status).toBe("needs_user_decision")
+          expect(lastRes.retry_count).toBe(4)
+          expect(lastRes.layer).toBe("quality")
+        }
+      }
+
+      // 3. resolve_review(giveup)
+      const rg = JSON.parse(await resolve_review.execute({ task_group_id: "1", decision: "giveup" }, o))
+      expect(rg.status).toBe("ok")
+      expect(rg.decision).toBe("giveup")
+      expect(rg.exempted_count).toBeGreaterThan(0)
+
+      state = readStateSync(wt, CID)
+      const tgG = state.taskGroups.find((g: any) => g.id === "1")
+      expect(tgG.phases.review.completed).toBe(true)
+      for (const issue of tgG.phases.review.issues) {
+        expect(issue.status).toBe("exempted")
+      }
+    } finally {
+      try { rmSync(root, { recursive: true, force: true }) } catch {}
+    }
   })
 })

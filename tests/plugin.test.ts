@@ -19,7 +19,7 @@ describe("OpenspecOrchestratePlugin", () => {
     expect(hooks.tool).toBeDefined()
   })
 
-  test("registers 9 opx_* tools + opx_skill", async () => {
+  test("registers 11 opx_* tools + opx_skill", async () => {
     const hooks = await OpenspecOrchestratePlugin(mockInput as any)
     const names = Object.keys(hooks.tool!)
     expect(names).toContain("opx_orch_init")
@@ -28,10 +28,12 @@ describe("OpenspecOrchestratePlugin", () => {
     expect(names).toContain("opx_orch_complete_task_group")
     expect(names).toContain("opx_arch_submit")
     expect(names).toContain("opx_dev_submit")
-    expect(names).toContain("opx_reviewer_submit")
+    expect(names).toContain("opx_tool_review_submit")
+    expect(names).toContain("opx_task_review_submit")
+    expect(names).toContain("opx_quality_review_submit")
     expect(names).toContain("opx_orch_resolve_review")
     expect(names).toContain("opx_skill")
-    expect(names.length).toBe(9)
+    expect(names.length).toBe(11)
     for (const n of names) {
       expect(typeof hooks.tool![n].execute).toBe("function")
     }
@@ -46,13 +48,13 @@ describe("OpenspecOrchestratePlugin", () => {
     expect(agent["openspec-orchestrator"]).toBeDefined()
     expect(agent["openspec-architect"]).toBeDefined()
     expect(agent["openspec-developer"]).toBeDefined()
-    expect(agent["openspec-validator"]).toBeDefined()
+    expect(agent["openspec-reviewer-tool"]).toBeDefined()
+    expect(agent["openspec-reviewer-task"]).toBeDefined()
     expect(agent["openspec-reviewer-style"]).toBeDefined()
     expect(agent["openspec-reviewer-architecture"]).toBeDefined()
     expect(agent["openspec-reviewer-performance"]).toBeDefined()
     expect(agent["openspec-reviewer-security"]).toBeDefined()
     expect(agent["openspec-reviewer-maintainability"]).toBeDefined()
-    expect(agent["openspec-reviewer-test"]).toBeDefined()
 
     // Check orchestrator agent has correct mode
     const orch = agent["openspec-orchestrator"] as Record<string, unknown>
@@ -96,7 +98,7 @@ describe("OpenspecOrchestratePlugin", () => {
     )
     const out = typeof result === "string" ? result : (result as any).output
     expect(out).toContain("## Skill: openspec-orchestrate")
-    expect(out).toContain("三层架构")
+    expect(out).toContain("四阶段")
     // Verify frontmatter stripped (body starts with content, not "---")
     expect(out).not.toMatch(/^---/m)
   })

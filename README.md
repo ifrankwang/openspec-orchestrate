@@ -1,31 +1,32 @@
 # openspec-orchestrate
 
-OpenCode 编排插件，实现 OpenSpec 三层架构工作流。
+OpenCode 编排插件，实现 OpenSpec 四阶段工作流 + Review 三层门禁。
 
 ## 架构
 
 ```
-架构师 (Architect) ──→ 开发+验证 (Developer + Validator) ──→ 6 维审核 (Reviewers)
+架构师 (Architect) ──→ 开发 (Developer) ──→ Review 三层门禁 (Tool → Task → Quality)
 ```
 
 编排者（orchestrator）只负责分派子代理，不自已写代码、审查或测试。
 
-### 三阶段状态机
+### 四阶段状态机
 
 每个 task group 按序执行：
 
-`architect_review → developer_implement → review → completed`
+`task_analysis → dev_impl → review → completed`
 
 多 task group 顺序执行，完成后自动推进到下一个未开始组。
 
-### 7 维审查体系
+### Review 三层门禁
 
-| 阶段 | 维度 | 职责 |
+| 阶段 | 角色 | 职责 |
 |------|------|------|
-| Phase 2 | task (Validator) | 验证 task 产出，校验 verified/failed 完整性 |
-| Phase 3 | style / architecture / performance / security / maintainability / test | 代码审查，test 额外要求 type + root_cause_guess |
+| Phase 3 tool review | openspec-reviewer-tool | 确定性工具检查（Spotless/PMD/ArchUnit/SonarQube/UT 编译），跨维提交 |
+| Phase 3 task review | openspec-reviewer-task | task 产出验证 + 服务启动 + 接口测试 + 测试审查 |
+| Phase 3 quality review | openspec-reviewer-style / architecture / performance / security / maintainability | 5 维 AI 语义审查（并行） |
 
-review 最多 3 轮重试，超限后由用户决策（continue / giveup）。
+每层独立 3 轮重试，tool→task→quality 严格顺序。任一层不通过立即回 dev_impl。超限后由用户决策（continue / giveup）。
 
 ## 快速开始
 
@@ -40,7 +41,7 @@ bun add @opencode-ai/openspec-orchestrate
 
 1. 在 OpenCode 配置中注册插件
 2. 编排者发起 `opx_orch_init` 初始化流程
-3. 三阶段自动化执行：架构设计 → 开发实现 → 多维审查
+3. 四阶段自动化执行：task_analysis → dev_impl → review（三层门禁）→ completed
 
 ## 命令
 
@@ -53,13 +54,13 @@ bun add @opencode-ai/openspec-orchestrate
 
 ```
 src/
-  index.ts              — 插件入口（注册 9 个 opx_* 工具 + opx_skill）
-  tools/orchestrate.ts  — 全部编排逻辑
+  index.ts              — 插件入口（注册 11 个 opx_* 工具 + opx_skill）
+  tools/orchestrate.ts  — 全部编排逻辑（含 opx_tool_review_submit / opx_task_review_submit / opx_quality_review_submit）
   agents/loader.ts      — 注入 agent 配置
   skills/tool.ts        — 加载内置 skill
   skills/loader.ts      — 注入 skill
 assets/
-  agents/               — 10 个 agent MD 定义
+  agents/               — 10 个 agent MD 定义（含 tool/task/quality review）
   skills/               — 内置 skill 定义
 tests/                  — Bun test，100% fake-git 无外部依赖
 ```

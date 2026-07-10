@@ -2,8 +2,10 @@
 # 编排会话导出与精简脚本
 # 用法: ./export-session.sh <sessionID> [depth]
 # 输出: 精简 JSON 文件路径 + 摘要文件路径（.summary.jsonl）
-# 精简：删除 tool part 的 .state.output + reasoning part 的 .text
+# 精简：默认删除 tool part 的 .state.output + 始终删除 reasoning part 的 .text
 # 摘要：每消息一行的结构化概览，供 optimizer 快速查询，无需解析完整 JSON
+# 环境变量:
+#   KEEP_TOOL_OUTPUT=1 — 保留 tool 返回值（.state.output），用于分析 opx_* 工具状态转移证据；reasoning 始终删除
 
 set -o pipefail
 
@@ -41,10 +43,10 @@ jq -r '
   ] | unique | .[]
 ' "$RAW" > "$CHILDREN_LIST" 2>/dev/null || true
 
-# 精简：删除 tool output + reasoning text
+# 精简：按条件删除 tool output + 始终删除 reasoning text
 jq '
   .messages[].parts[] |= (
-    if .type == "tool" and .state then .state.output = "[stripped]"
+    if .type == "tool" and .state and (env.KEEP_TOOL_OUTPUT != "1") then .state.output = "[stripped]"
     elif .type == "reasoning" then .text = "[stripped]"
     else . end
   )

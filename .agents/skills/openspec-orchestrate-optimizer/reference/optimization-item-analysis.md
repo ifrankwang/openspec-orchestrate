@@ -25,7 +25,7 @@
 主代理基于用户描述先做初步判定：
 
 - 优化项涉及的组件类型（agent 定义 / skill 定义 / 工具 / 流程阶段 / 配置 / 脚本）
-- 具体涉及哪些文件路径（根据组件类型在 `.opencode/agents/`、`.opencode/skills/`、`.agents/skills/`、`.opencode/tools/`、`openspec/changes/` 等目录中定位）
+- 具体涉及哪些文件路径（根据组件类型在 `assets/agents/`、`assets/skills/`、`src/tools/`、`.agents/skills/` 等目录中定位）
 - 优化项的性质倾向（是否涉及明确的问题现象，还是单纯的改进/增强诉求）
 
 **若描述模糊**（如"编排太慢"、"审查员有问题"），用 question 工具向用户追问：
@@ -39,8 +39,8 @@
 
 读取以下两份文档，提取约束清单：
 
-- `openspec-orchestrate` SKILL.md（`.opencode/skills/openspec-orchestrate/SKILL.md`）
-- `openspec-orchestrator` agent 定义（`.opencode/agents/openspec-orchestrator.md`）
+- `openspec-orchestrate` SKILL.md（`assets/skills/openspec-orchestrate/SKILL.md`）
+- `openspec-orchestrator` agent 定义（`assets/agents/openspec-orchestrator.md`）
 
 约束清单用于评估"当前实现是否偏离规范""规范本身是否有缺口或不清晰处"。提取范围同模式 A 的 Step 2，但**不需要信号映射**（信号映射是 session 合规分析专用的，用于在 JSON 中查找验证证据），本模式改为"在文件内容中查找实现证据"。
 
@@ -52,11 +52,11 @@
 
 | 组件类型 | 路径 |
 |---------|------|
-| agent 定义 | `.opencode/agents/<name>.md` |
-| 编排 skill | `.opencode/skills/openspec-orchestrate/SKILL.md`（已在 B2 读取） |
-| 框架 skill | `.agents/skills/<name>/SKILL.md`、`.opencode/skills/<name>/SKILL.md` |
-| 工具逻辑 | `.opencode/tools/<name>.ts`（注意编译后的运行行为可能与源码有出入，需结合 session 中的实际调用结果交叉验证） |
-| 配置/脚本 | 如 `scripts/export-session.sh`、`openspec/config.yaml` 等 |
+| agent 定义 | `assets/agents/<name>.md` |
+| 编排 skill | `assets/skills/openspec-orchestrate/SKILL.md`（已在 B2 读取） |
+| 框架 skill | `assets/skills/<name>/SKILL.md`、`.agents/skills/<name>/SKILL.md` |
+| 工具逻辑 | `src/tools/orchestrate.ts`（注意编译后的运行行为可能与源码有出入，需结合 session 中的实际调用结果交叉验证） |
+| 配置/脚本 | 如 `scripts/export-session.sh` 等 |
 
 分派 explore 子代理并发读取（遵循 `superpowers:dispatching-parallel-agents`），每个子代理返回所读文件的**结构化现状摘要**：章节划分、关键约束点、与优化项相关的现有实现描述。
 
@@ -134,10 +134,12 @@
 范围：<文件路径+章节/行号>
 ```
 
+报告输出后，如需对分析结果实施修复，按 `reference/remediation.md` 执行。
+
 ## 本模式特有约束
 
 - 不导出 session、不调用 `scripts/export-session.sh`
-- 不修改任何文件，仅输出分析报告
+- 分析阶段不修改任何文件；修复阶段仅由子代理修改，主代理不得直接改代码
 - 改进建议必须指名具体文件路径和章节/行号
 - 路径 1（5-Why）必须落到系统性根因（skill/agent/工具的设计层面），不落在个案操作失误
 - 路径 2 必须给出方案的风险与权衡，并明确推荐
@@ -146,6 +148,6 @@
 ## 本模式 Gotchas
 
 - 改进导向路径不要把 5-Why 强行套到"加一个新能力"上，根因会牵强
-- 工具逻辑分析时，源码（`.opencode/tools/*.ts`）反映的是声明式行为，实际执行行为可能与源码有出入；遇到怀疑时，结合具体调用结果或与用户确认后再下结论
+- 工具逻辑分析时，源码（`src/tools/orchestrate.ts`）反映的是声明式行为，实际执行行为可能与源码有出入；遇到怀疑时，结合具体调用结果或与用户确认后再下结论
 - 优化项常涉及多个组件的联动改动，方案探索时需评估改动对其他 agent/skill 的连锁影响
-- 涉及流程阶段改动时，编排状态机（`orchestrate_*` 工具的状态转移逻辑）需作为评估基线，避免建议破坏状态机约束
+- 涉及流程阶段改动时，编排状态机（`opx_*` 工具的状态转移逻辑）需作为评估基线，避免建议破坏状态机约束

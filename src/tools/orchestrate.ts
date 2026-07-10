@@ -70,8 +70,8 @@ const architectIssue = tool.schema.object({
 })
 
 const executionBoundarySchema = tool.schema.object({
-  allowed_directories: tool.schema.array(tool.schema.string().min(1)).min(1).describe("developer 只能修改/创建文件的目录列表"),
-  allowed_packages: tool.schema.array(tool.schema.string().min(1)).min(1).describe("developer 只能新增/修改代码的包路径列表"),
+  allowed_directories: tool.schema.array(tool.schema.string().min(1)).min(1).describe("developer 只能修改/创建文件的目录列表（含实施与验证所需的测试代码目录）"),
+  allowed_packages: tool.schema.array(tool.schema.string().min(1)).min(1).describe("developer 只能新增/修改代码的包路径列表（含对应的测试包路径）"),
   notes: tool.schema.string().describe("实施建议：关键坑位提醒、组件复用指引、设计约束边缘场景、框架应用说明（如 MapStruct 对象转换）；不含目录/包路径（见 allowed_directories/allowed_packages），无则留空"),
 })
 
@@ -111,7 +111,7 @@ interface ExecutionBoundary {
 
 const TASK_STATUSES = ["open", "submitted", "rejected", "verified", "skipped"] as const
 type TaskStatus = typeof TASK_STATUSES[number]
-const ISSUE_STATUSES = ["open", "submitted", "rejected", "verified", "exemption", "exempted"] as const
+const ISSUE_STATUSES = ["open", "submitted", "rejected", "verified", "exemption", "exempted", "skipped"] as const
 type IssueStatus = typeof ISSUE_STATUSES[number]
 
 interface TaskItem {

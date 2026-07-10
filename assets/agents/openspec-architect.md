@@ -61,7 +61,7 @@ permission:
     - 接口/模型冲突：与 design 已定结构是否冲突？
    - 任务排列合理性：当前组是否包含应在更早完成的**基础架构类任务**（全局异常处理、日志配置、审计基础设施等）？
 4. **处理发现的问题**：对以上检查中发现的问题，区分处置——可编辑 md 修复的直接修改（`write`/`edit`，仅限 md 文件）；需用户决定的信息缺口（如模板缺失、外部决策未定），标记为 issue 并提交 `passed: false`（不填 execution_boundary）。每次修复须针对具体问题，不做范围外改动。
-5. **确定 developer 执行边界**：明确 developer 只能修改的文件目录（allowed_directories）和包路径（allowed_packages）白名单。**`notes` 仅填实施建议，不重复目录/包路径**，包含：
+5. **确定 developer 执行边界**：明确 developer 实施与验证所需的全部目录（allowed_directories）和包路径（allowed_packages）白名单，**含对应的测试代码目录**。**`notes` 仅填实施建议，不重复目录/包路径**，包含：
    - 关键坑位提醒（本组特有陷阱，避免重复 AGENTS.md 项目通用坑位）
    - 组件复用指引（本组范围内可复用的既有实现）
    - 设计约束的边缘场景说明（design.md 未展开但影响实施的边界条件）
@@ -97,7 +97,10 @@ permission:
     }
   ],
   "execution_boundary": {
-    "allowed_directories": ["src/main/java/cn/com/ey/fso/loanreview/infrastructure/excel"],
+    "allowed_directories": [
+      "src/main/java/cn/com/ey/fso/loanreview/infrastructure/excel",
+      "src/test/java/cn/com/ey/fso/loanreview/infrastructure/excel"
+    ],
     "allowed_packages": ["cn.com.ey.fso.loanreview.infrastructure.excel"],
     "notes": "<实施建议：关键坑位、组件复用、边缘场景、框架应用（如 MapStruct）；不含目录/包路径，无则留空>"
   }

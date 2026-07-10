@@ -1,0 +1,124 @@
+---
+name: java-dev-essentials
+description: Java 后端项目开发基础——构建命令、代码质量、测试、日志、提交规范。适用场景：编写代码（backend-developer）、测试审查（test-engineer）、任务验证（task-verifier）、规范审查（code-reviewer-style）。
+---
+
+## 构建命令
+
+```bash
+mvn compile                           # 编译
+mvn test                              # 运行测试
+mvn spotless:check                    # 格式检查（Palantir Java Format）
+mvn spotless:apply                    # 自动格式化
+mvn pmd:check                         # 静态分析
+mvn clean package                     # 打包
+mvn spring-boot:run                   # 启动应用
+```
+
+## 代码质量工具
+
+**Spotless**（Palantir Java Format）：
+- 提交前执行 `mvn spotless:apply` 格式化，`mvn spotless:check` 必须通过
+- 配置在 pom.xml `spotless-maven-plugin`
+
+**PMD**：
+- 禁止 `System.out.println` / `System.err.println`
+- 强制 try-with-resources
+- 方法行数上限 100，类圈复杂度上限 20、方法上限 15
+- 规则集文件：`src/main/resources/pmd-rules.xml`，绑定 build 生命周期
+- 当前以 warning 为主，后续逐步收紧为 error，提前治理
+
+**SonarLint**：IDE 建议安装 SonarLint 插件，尽量修复提示问题
+
+## .gitignore
+
+必须包含：
+```
+target/
+*.log
+.idea/
+*.iml
+.env
+```
+
+## 测试规范
+
+**命名规范**：
+- 测试类：`{ClassName}Test`（如 `RiskSignalDetectorTest`）
+- 测试方法：`test{MethodName}`（如 `testDetectHighRiskSignals`）
+
+**分层策略**：
+- domain service 测试用纯 JUnit，零 Spring 依赖（domain 层本就无框架依赖）
+- 优先切片测试 + `@Import` 组装所需 Bean，避免滥用全量 `@SpringBootTest`（启动慢、依赖环境）
+- 仅跨多层集成测试时才用 `@SpringBootTest` + `@ActiveProfiles("test")`
+
+**测试数据库**：
+- 默认 H2 内存库（`MODE=PostgreSQL` 兼容模式），Flyway 在 test profile 下禁用
+- 配置见 `src/test/resources/application-test.yml`
+- Testcontainers 依赖已引入，需真实 PostgreSQL 特性（JSONB/GIN/pgmq）的集成测试按需启用
+
+**WireMock**：
+- Stub 位置：`src/test/resources/mock/mappings/`
+- 响应体位置：`__files/`
+- 模拟外部信息查询服务（企查查 MCP / 企业预警通）
+
+**ArchUnit**：
+- 验收 Domain 层零框架依赖
+- 验收层间依赖方向（interfaces → application → domain ← infrastructure）
+- 依赖：`archunit-junit5`
+
+**测试数据**：
+- XLSX 测试文件 → `src/test/resources/`
+- 配置文件 → `application-test.yml`
+
+## 日志规范
+
+**SLF4J + Logback**：
+```java
+private static final Logger log = LoggerFactory.getLogger(MyClass.class);
+log.info("Processing loan {}", loanId);  // 参数化，不拼接字符串
+```
+
+**级别配置**：domain=DEBUG, infrastructure=INFO, framework=WARN
+
+**禁止**：
+1. `System.out.println` / `System.err.println`
+2. 日志中输出密码、Token、身份证号等敏感数据
+3. 保留仅为调试目的添加的日志（任务完成后清理）
+
+## 提交规范
+
+使用 [Conventional Commits](https://www.conventionalcommits.org/)：
+```
+feat(domain): 新增 Xxx 值对象
+fix(infra): 修复 N+1 查询问题
+refactor(app): 重构 XxxService
+test(domain): 补充 RiskSignalDetector 测试
+docs: 更新 AGENTS.md
+chore: 升级依赖版本
+```
+
+提交粒度：每个独立子任务至少一个 commit；修复审查反馈时 commit message 引用审查报告问题编号。
+
+## Flyway 迁移
+
+- 脚本命名：`V{version}__{description}.sql`，如 `V1__init_schema.sql`
+- 脚本位置：`src/main/resources/db/migration/`
+- DB 状态字段用 SMALLINT，Domain 层映射为 Java 枚举
+- JSONB 字段（如 risk_signals）建 GIN 索引
+
+## Spring Boot 启动与配置
+
+**启动命令**：`mvn spring-boot:run` 或 `java -jar`
+
+**健康检查**：`/actuator/health`（需引入 actuator starter）
+
+**配置文件分层**：
+- `application.yml` — 公共配置
+- `application-dev.yml` — 开发环境
+- `application-prod.yml` — 生产环境
+- `application-test.yml` — 测试环境
+
+**文件上传**：`spring.servlet.multipart.max-file-size: 20MB`，Controller 层须做文件类型白名单校验
+
+**CORS**：开发环境允许前端跨域

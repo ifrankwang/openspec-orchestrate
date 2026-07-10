@@ -106,7 +106,7 @@ interface ExecutionBoundary {
 
 const TASK_STATUSES = ["open", "submitted", "rejected", "verified", "skipped"] as const
 type TaskStatus = typeof TASK_STATUSES[number]
-const ISSUE_STATUSES = ["open", "submitted", "rejected", "verified", "exemption", "exempted", "skipped"] as const
+const ISSUE_STATUSES = ["open", "submitted", "rejected", "verified", "exemption", "exempted"] as const
 type IssueStatus = typeof ISSUE_STATUSES[number]
 
 interface TaskItem {

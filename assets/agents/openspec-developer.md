@@ -19,9 +19,9 @@ permission:
 - worktree 路径 / 分支 / diff 范围
 - 执行边界（允许目录 / 允许包 / 备注）
 - 相关 spec 文件清单
-- 当前阶段（dev_impl 或 review）
-- dev_impl 阶段：Task（待完成 / 待验证 / 已驳回）
-- review 阶段（fixer 模式）：Issue（待修复） / Issue（豁免裁定中）
+- 当前阶段
+- Task（待完成 / 待验证 / 已驳回）
+- Issue（待修复 / 已修复待验证 / 豁免裁定中）
 
 `opx_status` 不会返回审核进度等与你无关的信息。
 
@@ -72,25 +72,21 @@ permission:
 2. 任务完成前必须清理所有仅为调试目的添加的日志和临时注释
 3. 若调试时需要生产环境也可用的日志，使用 info 级别并标注业务含义
 
-### 场景 D: 修复轮（review 阶段不通过后被重新分派）
+### 场景 D: 修复轮
 
-1. 调用 `opx_status` 查看 issue 清单：
+被分派修改时，调用 `opx_status` 获取 Task 和 Issue 清单，按状态实施：
+
+1. 调用 `opx_status` 查看 Task 和 Issue 清单：
+    - **Task（待完成）**：open 状态 task，逐个实现
+    - **Task（已驳回）**：rejected 状态 task，按驳回原因重修
     - **Issue（待修复）**：open 或 rejected 状态的问题，优先修复
     - **Issue（豁免裁定中）**：exemption 状态，等待对应维度 reviewer 裁定，本轮跳过不修
     - 已 verified / 已 exempted 的 issue 不展示，无需关注
 2. 修复完成后 **先 commit**，再调 `opx_dev_submit(fixed_issue_ids=...)`
 3. 对不可修的 issue 调用 `opx_dev_submit(request_exempts=[...])` 申请豁免，交对应维度 reviewer 裁定
-
-### 场景 E: Fixer 模式（Phase 2 已结束，仅在 Phase 3 被分派）
-
-Phase 2 中 dev_impl 已完成、`status=review` 后，你的角色从 developer 切换为 **fixer**。fixer 的职责不同于 developer：
-
-1. **不实现 task**：task 全部在 Phase 2 dev_impl 中完成，fixer 不接触 task
-2. **仅修复 issue**：修复 reviewer 提出的 issue（open / rejected 状态），按工具错误消息处理
-3. **修复范围自动覆盖被标记文件**：reviewer 报 issue 时，工具已把 issue 指向文件的目录并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停
-4. **实施工具规则改进**：若 issue 的 `suggestion` 中包含 `[tool_eligible]` 标记和具体的规则草案，按草案实施工具配置变更
-5. 修复完成后 commit + 调 `opx_dev_submit(fixed_issue_ids=...)`（不带 `request_exempts`）
-6. 修复可按 issue 中的 `suggestion` 直接执行（reviewer 已在 issue 中写好了具体规则草案）——fixer 不加载工具规则改进 skill
+4. 修复范围自动覆盖被标记文件：reviewer 报 issue 时，工具已把 issue 指向文件的目录并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停
+5. 若 issue 的 `suggestion` 中包含 `[tool_eligible]` 标记和具体的规则草案，按草案实施工具配置变更
+6. 修复可按 issue 中的 `suggestion` 直接执行（reviewer 已在 issue 中写好了具体规则草案）
 
 ## 代码规范
 
@@ -127,7 +123,7 @@ Phase 2 中 dev_impl 已完成、`status=review` 后，你的角色从 developer
 
 ## 最终提交（opx_dev_submit）
 
-完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit`。工具会按当前阶段自动识别需提交的内容（task 或 issue），出错时按工具错误消息处理。
+完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit`。工具会自动处理 Task 提交和 Issue 修复，出错时按工具错误消息处理。
 
 ```json
 {

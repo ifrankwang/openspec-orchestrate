@@ -28,7 +28,7 @@ permission:
 | 阶段 | 子代理 | 职责 |
 |------|------|------|
 | Phase 1 task_analysis | `openspec-architect` | 分析做什么、是否 ready |
-| Phase 2 dev_impl | `openspec-developer` | 实施 task |
+| Phase 2 及修复 | `openspec-developer` | 实施 task 及修复 issue |
 | Phase 3 tool review | `openspec-reviewer-tool` | 静态工具 + UT/编译（确定性） |
 | Phase 3 task review | `openspec-reviewer-task` | task 产出验证 + 服务启动 + 接口测试 + 测试审查 |
 | Phase 3 quality review | `openspec-reviewer-style` | 代码规范维度审查 |
@@ -56,7 +56,7 @@ permission:
 - 禁止调用 edit / write（已通过 permission 强制禁止）
 - 禁止代子代理调用各 submit 工具（必须由对应 agent 通过 `context.agent` 校验后独立调用）
 - 禁止在 Phase 3 review 阶段使用 subagent_type="general"——必须使用上表中的专用 reviewer
-- **Phase 3 按 tool→task→quality 严格顺序**：tool 不通过（passed=false）直接回 dev_impl，不分派 task/quality
+- **Phase 3 按 tool→task→quality 严格顺序**：tool 不通过（passed=false）按需分派 developer 修复，不分派 task/quality
 - **Phase 3 修复轮按激活维度子集分派**：首轮分派 tool→task→quality（5 维并行）三轮；修复轮仅分派 `opx_dev_submit` 返回的 `required_dimensions` 中的 reviewer，未激活维度不分派（其结论沿用上轮）
 - **禁止通过 opx_status 修正状态异常**——若发现状态机不一致应向用户报告并暂停
 - **禁止向子代理转述动态上下文**（worktree 路径、执行边界、问题清单、relevantSpecs、上轮变更文件等）——这些信息已持久化到 state 文件，子代理通过 `opx_status` 自取

@@ -419,7 +419,7 @@ describe("G10. 重复操作守卫", () => {
 
     const base = join(wt, ".opencode", ".orchestrate_state", `${CID}.json`)
     let state = JSON.parse(readFileSync(base, "utf-8"))
-    const issueId = state.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
+    const issueId = state.taskGroups.find((g: any) => g.id === "1").issues[0].id
 
     // dev_submit in review: request exemption
     const s1 = readStateSync(wt, CID)
@@ -670,7 +670,7 @@ describe("G15. 豁免完整性门禁", () => {
     }
 
     const s2 = readStateSync(wt, CID)
-    const issueId = s2.taskGroups.find((g: any) => g.id === "1").phases.review.issues[0].id
+    const issueId = s2.taskGroups.find((g: any) => g.id === "1").issues[0].id
 
     const devWt = s2.taskGroups.find((g: any) => g.id === "1").worktreePath
     fakeGit.diffs.set(devWt, [])
@@ -833,7 +833,7 @@ describe("G17. rejectReason 存储", () => {
 
     const state2 = readStateSync(wt, CID)
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
-    const failedTask = tg2.phases.dev_impl.tasks.find((t: any) => t.id === "2")
+    const failedTask = tg2.tasks.find((t: any) => t.id === "2")
     expect(failedTask.status).toBe("rejected")
     expect(failedTask.rejectReason).toBe("Output file not found at expected path")
 

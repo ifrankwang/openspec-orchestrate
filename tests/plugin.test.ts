@@ -65,6 +65,19 @@ describe("OpenspecOrchestratePlugin", () => {
     expect((style.prompt as string).length).toBeGreaterThan(100)
   })
 
+  test("config hook injects bundled skills path", async () => {
+    const hooks = await OpenspecOrchestratePlugin(mockInput as any)
+    const config: Record<string, unknown> = {}
+    await hooks.config!(config as any)
+
+    const skills = config.skills as Record<string, unknown> | undefined
+    expect(skills).toBeDefined()
+    const paths = skills!.paths as string[]
+    expect(paths).toBeDefined()
+    expect(paths.length).toBeGreaterThanOrEqual(1)
+    expect(paths[0]).toMatch(/assets\/skills$/)
+  })
+
   test("config hook preserves existing agents", async () => {
     const hooks = await OpenspecOrchestratePlugin(mockInput as any)
     const config: Record<string, unknown> = {

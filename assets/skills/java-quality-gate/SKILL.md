@@ -1,6 +1,6 @@
 ---
-name: quality-gate
-description: 确定性质量门工具集。Phase 2 validator 加载，用于执行 spotless / ArchUnit / PMD / mvn test / SonarQube 等确定性工具检查，将违规项映射为 tool 类 issue。Phase 3 reviewer 不加载本 skill。
+name: java-quality-gate
+description: 仅限 Java 后端开发场景。确定性质量门工具集。Phase 2 validator 加载，用于执行 spotless / ArchUnit / PMD / mvn test / SonarQube 等 Java 项目确定性工具检查，将违规项映射为 tool 类 issue。Phase 3 reviewer 不加载本 skill。
 ---
 
 ## 适用范围

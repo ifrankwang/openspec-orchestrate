@@ -104,7 +104,7 @@ developer 实现 → 提交 → validator 验证
 
 **第一步：Developer 实施**。编排者分派 `openspec-developer`。developer 实施 task 后先 commit 再提交。
 
-**第二步：Validator 验证**。编排者分派 `openspec-validator`。validator 加载 `quality-gate` skill 执行确定性工具检查。
+**第二步：Validator 验证**。编排者分派 `openspec-validator`。validator 执行确定性工具检查。
 
 **循环条件**：所有 task 通过 → Phase 2 结束。若有未通过的 task → 返回 developer 修复后重新提交。
 

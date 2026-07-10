@@ -1,6 +1,6 @@
 ---
-name: quality-tool-improve
-description: 工具规则改进指南。Phase 3 reviewer 加载，用于将识别的可工具化 pattern 转化为具体的 ArchUnit / PMD / Spotless / SonarQube 规则草案，写入 issue 的 suggestion 字段。fixer 按 issue 中的规则草案直接实施，无需加载本 skill。
+name: java-quality-tool-improve
+description: 仅限 Java 后端开发场景。工具规则改进指南。Phase 3 reviewer 加载，用于将 Java 项目中可工具化的 pattern 转化为具体的 ArchUnit / PMD / Spotless / SonarQube 规则草案，写入 issue 的 suggestion 字段。fixer 按 issue 中的规则草案直接实施，无需加载本 skill。
 ---
 
 ## 适用范围

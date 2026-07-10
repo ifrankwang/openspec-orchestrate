@@ -1,5 +1,6 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { loadSkillBody } from "./skills/tool.js"
+import { injectSkills } from "./skills/loader.js"
 import { injectAgents } from "./agents/loader.js"
 
 import {
@@ -18,6 +19,7 @@ export const OpenspecOrchestratePlugin: Plugin = async () => {
   return {
     config: async (config) => {
       injectAgents(config)
+      injectSkills(config)
     },
     tool: {
       opx_orch_init: init,

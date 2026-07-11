@@ -153,16 +153,6 @@ interface DevPhaseData {
   completed: boolean
 }
 
-function deriveDevStatus(tg: TaskGroupState): "developing" | "validating" {
-  const allTasksDone = tg.tasks.every(
-    (t) => t.status === "skipped" || t.status === "verified" || t.status === "submitted"
-  )
-  const noBlockingIssues = !tg.issues.some(
-    (i) => (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
-  )
-  return allTasksDone && noBlockingIssues ? "validating" : "developing"
-}
-
 interface ReviewPhaseData {
   completed: boolean
   tool: ReviewLayerData
@@ -668,7 +658,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   lines.push("|------|------|")
   const phaseSummary = (name: string, p: { completed: boolean }) => p.completed ? "✓" : (tg.status === name ? "●" : "✗")
   lines.push(`| task_analysis | ${phaseSummary("task_analysis", tg.phases.architect_review)} |`)
-  const devStatus = tg.phases.dev_impl.completed ? "✓" : (tg.status === "dev_impl" ? `● ${deriveDevStatus(tg)}` : "✗")
+  const devStatus = tg.phases.dev_impl.completed ? "✓" : (tg.status === "dev_impl" ? "●" : "✗")
   lines.push(`| dev_impl | ${devStatus} |`)
   const reviewParts: string[] = []
   if (tg.phases.review.tool.completed) reviewParts.push("tool✓")
@@ -1684,7 +1674,7 @@ const rejectedIssueItem = tool.schema.object({
 export const dev_submit = tool({
   description:
     "developer 提交实现结果。根据 status 区分 task 提交还是 issue 修复：\n" +
-    "- developer_implement 阶段：标记 task 为 submitted，切换 status=validating\n" +
+    "- dev_impl 阶段：标记 task 为 submitted，自动进入 review 阶段\n" +
     "- review 阶段：标记 issue 为 submitted（已修复）或 exemption（申请豁免）",
   args: {
     task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
@@ -1784,8 +1774,10 @@ export const dev_submit = tool({
       requiredDims = computeRequiredDims(tg)
       nextMsg = "请分派各 reviewer 重新审查\n将从 tool 层重新开始审核"
     } else {
-      requiredDims = []
-      nextMsg = "请分派 validator 验证 task 产出和工具合规性"
+      tg.phases.dev_impl.completed = true
+      tg.status = "review"
+      requiredDims = computeRequiredDims(tg)
+      nextMsg = "请分派 openspec-reviewer-tool 开始 tool review"
     }
 
     await writeState(context.worktree, state)

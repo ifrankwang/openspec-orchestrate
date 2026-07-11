@@ -69,10 +69,6 @@ async function setupThroughQualityReady(
 
   const s2 = readStateSync(wt, CID)
   const tg = s2.taskGroups.find((g: any) => g.id === "1")
-  await init.execute({
-    change_id: CID, current_task_group_id: "1",
-    recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
-  }, ctx.orch)
   if (!tg.phases.review.tool.completed) {
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, ctx.toolReviewer)
   }
@@ -171,19 +167,16 @@ describe("1. Happy Path — 完整流程", () => {
     fakeGit.diffs.set(devWt, ["src/F1.java"])
     const r3 = JSON.parse(await dev_submit.execute({ task_group_id: "1" }, d))
     expect(r3.status).toBe("ok")
+    expect(r3.active_phase).toBe("review")
 
     state = readStateSync(wt, CID)
     const tg3 = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg3.tasks.every((t: any) => t.status === "submitted")).toBe(true)
     expect(tg3.lastFilesChanged).toContain("src/F1.java")
+    expect(tg3.status).toBe("review")
+    expect(tg3.phases.dev_impl.completed).toBe(true)
 
-    // 5. Transition to review + tool + task layer
-    const s5 = readStateSync(wt, CID)
-    const tg5 = s5.taskGroups.find((g: any) => g.id === "1")
-    await init.execute({
-      change_id: CID, current_task_group_id: "1",
-      recovery: { phase: "review", worktree_path: tg5.worktreePath, branch_name: tg5.branchName, preserve_progress: true },
-    }, o)
+
 
     const rr1 = JSON.parse(await tool_review_submit.execute({
       task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [],

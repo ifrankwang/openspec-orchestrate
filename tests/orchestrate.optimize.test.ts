@@ -134,10 +134,20 @@ describe("B1. opx_status 阶段门禁", () => {
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
-    const { orch, arch, dev } = await setupThroughDevSubmit(wt, fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+    const a = makeCtx("openspec-architect", wt)
+    const d = makeCtx("openspec-developer", wt)
+
+    // 只做到 set_worktree（status=dev_impl），不调 dev_submit（dev_submit 现在自动进 review）
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
 
     // developer should pass gate
-    const devView = await status.execute({}, dev)
+    const devView = await status.execute({}, d)
     const devStr = typeof devView === "string" ? devView : JSON.stringify(devView)
     expect(devStr).toMatch(/✅ 当前轮到你执行/)
 

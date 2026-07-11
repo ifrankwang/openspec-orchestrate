@@ -106,12 +106,12 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 Developer 实施 task：
 
 ```
-developer 实现 → 提交 → 编排者启动 review 阶段
+developer 实现 → 提交 → 工具自动进入 review 阶段
 ```
 
 **Developer 实施**。编排者分派 `openspec-developer`。developer 实施 task 后先 commit 再提交。
 
-**进入 Review**：developer 提交后（`opx_dev_submit`），编排者启动 Phase 3 review。
+**进入 Review**：`opx_dev_submit` 提交后工具自动进入 review 阶段。编排者直接分派 `openspec-reviewer-tool` 开始 tool review，无需手动 recovery。
 
 ### Phase 3: Review（三层门禁）
 

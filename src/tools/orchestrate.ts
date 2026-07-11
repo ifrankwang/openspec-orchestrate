@@ -275,6 +275,7 @@ function computeRequiredDims(tg: TaskGroupState): ReviewDimension[] {
   const all = [...REVIEW_DIMENSIONS] as ReviewDimension[]
   if (tg.phases.review.quality.retryCount === 0) return all
   const dims = dimsWithPendingAction(tg)
+  if (dims.size === 0) return all
   return all.filter((d) => dims.has(d))
 }
 
@@ -662,13 +663,14 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   lines.push(`| task_analysis | ${phaseSummary("task_analysis", tg.phases.architect_review)} |`)
   const devStatus = tg.phases.dev_impl.completed ? "✓" : (tg.status === "dev_impl" ? `● ${deriveDevStatus(tg)}` : "✗")
   lines.push(`| dev_impl | ${devStatus} |`)
-  const reviewLayer = tg.phases.review.tool.completed
-    ? "tool✓"
-    : tg.phases.review.task.completed
-    ? "task✓"
-    : tg.phases.review.quality.completed
-    ? "quality✓"
-    : ""
+  const reviewParts: string[] = []
+  if (tg.phases.review.tool.completed) reviewParts.push("tool✓")
+  if (tg.phases.review.task.completed) reviewParts.push("task✓")
+  if (tg.phases.review.quality.completed) reviewParts.push("quality✓")
+  if (!tg.phases.review.tool.completed) reviewParts.push("tool⏳")
+  else if (!tg.phases.review.task.completed) reviewParts.push("task⏳")
+  else if (!tg.phases.review.quality.completed) reviewParts.push("quality⏳")
+  const reviewLayer = reviewParts.join(" → ")
   const reviewStatus = tg.phases.review.completed ? "✓" : (tg.status === "review" ? `● ${reviewLayer}` : "✗")
   lines.push(`| review | ${reviewStatus} |`)
   lines.push("")
@@ -1771,6 +1773,7 @@ export const dev_submit = tool({
       tg.phases.review.task.completed = false
       tg.phases.review.quality.completed = false
       tg.phases.review.quality.progress = createEmptyQualityProgress()
+      tg.phases.review.quality.retryCount = 0
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
       nextMsg = "请分派各 reviewer 重新审查\n将从 tool 层重新开始审核"

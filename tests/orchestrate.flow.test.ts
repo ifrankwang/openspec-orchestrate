@@ -1214,6 +1214,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
     const tgFix = state.taskGroups.find((g: any) => g.id === "1")
     expect(tgFix.status).toBe("review")
     expect(tgFix.phases.review.task.completed).toBe(false)
+    expect(tgFix.phases.review.quality.retryCount).toBe(0)
     expect(tgFix.tasks.every((t: any) => t.status === "verified")).toBe(true)
 
     // --- 4. Tool review passes (with fixed issue) ---

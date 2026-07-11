@@ -61,7 +61,8 @@ permission:
 - **禁止通过 opx_status 修正状态异常**——若发现状态机不一致应向用户报告并暂停
 - **禁止向子代理转述动态上下文**（worktree 路径、执行边界、问题清单、relevantSpecs、上轮变更文件等）——这些信息已持久化到 state 文件，子代理通过 `opx_status` 自取
 - 编排者分派子代理的 prompt 仅包含分派指令 + 轮次/阶段标识 + 必要时用户原话片段
-- **分派子代理前先调用 `opx_status` 确认当前处于对应阶段/层**——编排者视图包含当前阶段和 review 子层进度，确保跳阶段或错层分派
+- **分派子代理前先调用 `opx_status` 确认当前处于对应阶段/层**——编排者视图包含当前阶段和 review 子层进度，确保不跳阶段或错层分派
+- **若分派的子代理被 opx_status 门禁拒绝**，应直接读取 state JSON 文件（`.opencode/.orchestrate_state/<change_id>.json`）交叉验证状态后决策，必要时用 `opx_orch_init(recovery=...)` 修复
 
 ## 分派指令模板
 

@@ -828,3 +828,153 @@ describe("B4. 空 issue 正常提交回归", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ════════════════════════════════════════════════════════════════
+//  Behavior 5: dev_submit 重置 quality.retryCount（修复 B 验证）
+// ════════════════════════════════════════════════════════════════
+
+describe("B5. dev_submit 重置 quality.retryCount", () => {
+  test("quality 失败 → dev 修复提交 → retryCount=0, quality gate 放行", async () => {
+    const root = `/tmp/optimize-b5-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+
+    const { orch, dev, toolR, taskR } = await setupThroughReviewReady(wt, fakeGit)
+
+    // 1. quality 首轮：style 报阻塞 issue
+    const dims: string[] = ["style", "architecture", "performance", "security", "maintainability"]
+    for (let i = 0; i < dims.length; i++) {
+      const args: any = { task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }
+      if (i === 0) {
+        args.passed = false
+        args.issues = [{ severity: "Low", file: "src/x.java", line: 1, description: "Naming", suggestion: "Fix" }]
+      }
+      await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt))
+    }
+
+    let state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.phases.review.quality.retryCount).toBe(1)
+    expect(tg.status).toBe("dev_impl")
+
+    const issueId = tg.issues[0].id
+    const devWt = tg.worktreePath
+
+    // 2. developer 修复并提交
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1", fixed_issue_ids: [issueId] }, dev)
+
+    state = readStateSync(wt, CID)
+    const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgAfter.phases.review.quality.retryCount).toBe(0)
+
+    // 3. tool+task 重新通过
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tgAfter.worktreePath, branch_name: tgAfter.branchName, preserve_progress: true },
+    }, orch)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [issueId] }, toolR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+
+    // 4. quality gate 放行全部 5 维（retryCount=0 首轮）
+    const styleR = makeCtx("openspec-reviewer-style", wt)
+    const archR = makeCtx("openspec-reviewer-architecture", wt)
+    const styleView = await status.execute({}, styleR)
+    const styleStr = typeof styleView === "string" ? styleView : JSON.stringify(styleView)
+    expect(styleStr).toMatch(/✅ 当前轮到你执行/)
+    const archView = await status.execute({}, archR)
+    const archStr = typeof archView === "string" ? archView : JSON.stringify(archView)
+    expect(archStr).toMatch(/✅ 当前轮到你执行/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
+// ════════════════════════════════════════════════════════════════
+//  Behavior 6: opx_status 编排者视图 review 进展渲染（修复 A 验证）
+// ════════════════════════════════════════════════════════════════
+
+describe("B6. opx_status 编排者视图 review 进展", () => {
+  test("tool+task 完成后显示全部已完成层 + 当前待推进层", async () => {
+    const root = `/tmp/optimize-b6a-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+
+    const { orch } = await setupThroughReviewReady(wt, fakeGit)
+
+    const view = await status.execute({}, orch)
+    const str = typeof view === "string" ? view : JSON.stringify(view)
+    expect(str).toMatch(/tool✓.*→.*task✓.*→.*quality⏳/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("tool 已完成 task 未完成显示 tool✓ → task⏳（不显示 quality）", async () => {
+    const root = `/tmp/optimize-b6b-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+
+    const { orch } = await setupThroughDevSubmit(wt, fakeGit)
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, orch)
+    const toolR = makeCtx("openspec-reviewer-tool", wt)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    const view = await status.execute({}, orch)
+    const str = typeof view === "string" ? view : JSON.stringify(view)
+    expect(str).toMatch(/tool✓.*→.*task⏳/)
+    expect(str).not.toMatch(/quality/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
+// ════════════════════════════════════════════════════════════════
+//  Behavior 7: computeRequiredDims 异常回退（修复 C 验证）
+// ════════════════════════════════════════════════════════════════
+
+describe("B7. computeRequiredDims 异常回退", () => {
+  test("retryCount>0 但无 pending issue → 回退放行全部维度", async () => {
+    const root = `/tmp/optimize-b7-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+
+    await setupThroughReviewReady(wt, fakeGit)
+
+    // 手动制造僵尸状态：quality.retryCount=2 但无 pending issue（无 submitted/exemption issue）
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    tg.phases.review.quality.retryCount = 2
+    tg.phases.review.quality.progress = {
+      style: { submitted: false, passed: false },
+      architecture: { submitted: false, passed: false },
+      performance: { submitted: false, passed: false },
+      security: { submitted: false, passed: false },
+      maintainability: { submitted: false, passed: false },
+    }
+    writeFileSync(
+      join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
+      JSON.stringify(state, null, 2)
+    )
+
+    // quality reviewer 应仍可通过 gate（computeRequiredDims 回退到全维度）
+    const styleR = makeCtx("openspec-reviewer-style", wt)
+    const archR = makeCtx("openspec-reviewer-architecture", wt)
+    const styleView = await status.execute({}, styleR)
+    const styleStr = typeof styleView === "string" ? styleView : JSON.stringify(styleView)
+    expect(styleStr).toMatch(/✅ 当前轮到你执行/)
+    const archView = await status.execute({}, archR)
+    const archStr = typeof archView === "string" ? archView : JSON.stringify(archView)
+    expect(archStr).toMatch(/✅ 当前轮到你执行/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})

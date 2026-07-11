@@ -943,8 +943,7 @@ describe("12. resolve_review — continue / giveup", () => {
           expect(r.status).toBe("rejected")
           expect(r.retry_count).toBe(round)
         } else {
-          expect(r.status).toBe("needs_user_decision")
-          expect(r.retry_count).toBe(4)
+          expect(r.status).toBe("ok")
         }
       }
 
@@ -960,6 +959,11 @@ describe("12. resolve_review — continue / giveup", () => {
       expect(tgS.phases.review.task.completed).toBe(false)
       expect(tgS.phases.review.quality.completed).toBe(false)
       expect(tgS.phases.review.completed).toBe(false)
+      expect(tgS.status).toBe("dev_impl")
+
+      // 验证 developer opx_status 通过门禁
+      const ds = await status.execute({}, d)
+      expect(ds).toContain("当前轮到你执行")
 
       // 4. 验证可重新从 tool 层开始
       fakeGit.diffs.set(devWt, ["src/F5.java"])
@@ -1025,9 +1029,7 @@ describe("12. resolve_review — continue / giveup", () => {
           expect(lastRes.status).toBe("rejected")
           expect(lastRes.retry_count).toBe(round)
         } else {
-          expect(lastRes.status).toBe("needs_user_decision")
-          expect(lastRes.retry_count).toBe(4)
-          expect(lastRes.layer).toBe("quality")
+          expect(lastRes.status).toBe("ok")
         }
       }
 

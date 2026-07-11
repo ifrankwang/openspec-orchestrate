@@ -133,7 +133,7 @@ interface IssueItem {
   description: string
   suggestion: string
   status: IssueStatus
-  firstRound: number
+  refixCount: number
   type: string | null
   rootCauseGuess: string | null
   exemptReason: string | null
@@ -649,7 +649,7 @@ function renderIssueItem(i: IssueItem): string {
   if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
   if (i.status === "exemption" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
   if (i.status === "rejected" && i.rejectReason) lines.push(`  - 驳回原因：${i.rejectReason}`)
-  lines.push(`  - 首次报告轮次：${i.firstRound}`)
+  lines.push(`  - 修复未过次数：${i.refixCount}`)
   return lines.join("\n")
 }
 
@@ -782,12 +782,29 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
     lines.push("本次任务组已全部完成。")
   } else if (tg.phases.review.completed) {
     lines.push("所有审核层已完成，调用 `opx_orch_complete_task_group` 收尾。")
+  } else if (tg.status === "review") {
+    const maxLayerRetry = Math.max(tg.phases.review.tool.retryCount, tg.phases.review.task.retryCount, tg.phases.review.quality.retryCount)
+    if (maxLayerRetry > MAX_RETRIES) {
+      lines.push("审查重试超上限（maxLayerRetry=" + maxLayerRetry + "），需要用户决策。")
+      lines.push("请调用 `opx_orch_resolve_review` 推进（continue：继续修 / giveup：放弃合并）。")
+    } else {
+      const agents = deriveCurrentAgents(tg)
+      if (agents.length > 0) {
+        const agentList = agents.map((a) => `\`${a}\``).join("、")
+        lines.push(`分派子代理：${agentList}。`)
+        if (tg.phases.review.task.completed && !tg.phases.review.tool.completed) {
+          lines.push("（说明：task 层已自动跳过，tool review 完成后直接进入 quality review）")
+        }
+      } else {
+        lines.push("（无待分派项，请检查状态）")
+      }
+    }
   } else {
     const agents = deriveCurrentAgents(tg)
     if (agents.length > 0) {
       const agentList = agents.map((a) => `\`${a}\``).join("、")
       lines.push(`分派子代理：${agentList}。`)
-      if (tg.status === "review" && tg.phases.review.task.completed && !tg.phases.review.tool.completed) {
+      if (tg.phases.review.task.completed && !tg.phases.review.tool.completed) {
         lines.push("（说明：task 层已自动跳过，tool review 完成后直接进入 quality review）")
       }
     } else {
@@ -877,6 +894,20 @@ function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState): strin
     lines.push("- (无)")
   }
   lines.push("")
+  // 高 refixCount 阻塞 issue 根因提示
+  const highRefixBlocking = tg.issues.filter(
+    (i) => (i.status === "open" || i.status === "rejected") && isBlockingIssue(i) && i.refixCount >= 2
+  )
+  if (highRefixBlocking.length > 0) {
+    lines.push("## ⚠️ 修复多次未过的 issue（须根因分析）", "")
+    for (const issue of highRefixBlocking) {
+      lines.push(`- Issue #${issue.id}（已 ${issue.refixCount} 次修复未过）`)
+      lines.push(`  - 文件：${issue.file}${issue.line > 0 ? `:${issue.line}` : ""}`)
+      lines.push(`  - 描述：${issue.description}`)
+    }
+    lines.push("")
+    lines.push("**必须完成 5-Why 根因分析后再动手修复**，不得跳过分析直接改代码。", "")
+  }
   lines.push("## 相关 spec 文件", "")
   if (tg.relevantSpecs.length === 0) lines.push("- (无)")
   else for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
@@ -1875,7 +1906,6 @@ function deduplicateAndAddIssues(
   existingIssues: IssueItem[],
   dimension: Dimension,
   nextIssueIdStart: number,
-  firstRound: number
 ): { newIssues: IssueItem[]; nextIssueId: number; dedupedCount: number } {
   let nextIssueId = nextIssueIdStart
   let dedupedCount = 0
@@ -1899,7 +1929,7 @@ function deduplicateAndAddIssues(
       description: iss.description,
       suggestion: iss.suggestion || "",
       status: "open" as const,
-      firstRound,
+      refixCount: 0,
       type: null,
       rootCauseGuess: null,
       exemptReason: null,
@@ -1988,8 +2018,10 @@ function applyReviewGate(
   for (const r of rejectedIssueInputs) {
     const issue = issues.find((i) => i.id === r.issue_id)
     if (issue && (issue.status === "submitted" || issue.status === "exemption")) {
+      const wasSubmitted = issue.status === "submitted"
       issue.status = "rejected"
       issue.rejectReason = r.reason
+      if (wasSubmitted) issue.refixCount++
     }
   }
 }
@@ -2047,7 +2079,7 @@ export const tool_review_submit = tool({
     let dedupedCount = 0
     for (const iss of issues) {
       const dim = iss.dimension as Dimension
-      const dedupResult = deduplicateAndAddIssues([iss], tg.issues, dim, nextIssueId, tg.phases.review.tool.retryCount + 1)
+      const dedupResult = deduplicateAndAddIssues([iss], tg.issues, dim, nextIssueId)
       if (dedupResult.dedupedCount > 0) { dedupedCount++; continue }
       const newIssue = dedupResult.newIssues[0]
       if (newIssue) {
@@ -2096,10 +2128,8 @@ export const tool_review_submit = tool({
     if (retryCount > MAX_RETRIES) {
       await writeState(context.worktree, state)
       return JSON.stringify({
-        status: "needs_user_decision",
-        retry_count: retryCount,
-        layer: "tool",
-        message: `tool 层审核已进行 ${retryCount} 轮（超过上限 ${MAX_RETRIES}），需要用户决策。`,
+        status: "ok",
+        message: `tool 层审核结果已记录。`,
       })
     }
     tg.phases.review.tool.completed = false
@@ -2201,9 +2231,8 @@ export const task_review_submit = tool({
     for (const iss of rawIssues) {
       const dedupResult = deduplicateAndAddIssues(
         [iss], tg.issues,
-        "style" as Dimension, // task 层 issue 不归属特定维度，用 style 占位
-        nextIssueId,
-        tg.phases.review.task.retryCount + 1
+        "style" as Dimension,
+        nextIssueId
       )
       if (dedupResult.dedupedCount > 0) continue
       if (dedupResult.newIssues.length > 0) {
@@ -2270,10 +2299,8 @@ export const task_review_submit = tool({
     if (retryCount > MAX_RETRIES) {
       await writeState(context.worktree, state)
       return JSON.stringify({
-        status: "needs_user_decision",
-        retry_count: retryCount,
-        layer: "task",
-        message: `task 层审核已进行 ${retryCount} 轮（超过上限 ${MAX_RETRIES}），需要用户决策。`,
+        status: "ok",
+        message: `task 层审核结果已记录。`,
       })
     }
     tg.phases.review.task.completed = false
@@ -2354,7 +2381,7 @@ export const quality_review_submit = tool({
     for (const iss of issues) {
       const dedupResult = deduplicateAndAddIssues(
         [iss], tg.issues, dimension,
-        nextIssueId, tg.phases.review.quality.retryCount + 1
+        nextIssueId
       )
       if (dedupResult.dedupedCount > 0) { dedupedCount++; continue }
       if (dedupResult.newIssues.length > 0) {
@@ -2453,12 +2480,8 @@ async function finalizeQualityPhase(
   if (retryCount > MAX_RETRIES) {
     await writeState(context.worktree, state)
     return JSON.stringify({
-      status: "needs_user_decision",
-      retry_count: retryCount,
-      layer: "quality",
-      failed_dimensions: failedDims,
-      has_residual_blocking: hasResidualBlocking,
-      message: `quality 层审核已进行 ${retryCount} 轮（超过上限 ${MAX_RETRIES}），需要用户决策。原因：${reason}。`,
+      status: "ok",
+      message: `quality 层审核结果已记录。`,
     })
   }
 
@@ -2521,6 +2544,7 @@ export const resolve_review = tool({
       tg.phases.review.quality.completed = false
       tg.phases.review.quality.progress = createEmptyQualityProgress()
       tg.phases.review.completed = false
+      tg.status = "dev_impl"
       await writeState(context.worktree, state)
       return JSON.stringify(
         {

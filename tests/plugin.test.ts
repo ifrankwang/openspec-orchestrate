@@ -93,12 +93,11 @@ describe("OpenspecOrchestratePlugin", () => {
   test("opx_skill loads bundled SKILL.md", async () => {
     const hooks = await OpenspecOrchestratePlugin(mockInput as any)
     const result = await hooks.tool!["opx_skill"].execute(
-      { name: "openspec-orchestrate" },
+      { name: "java-dev-essentials" },
       { agent: "test", worktree: "/tmp", directory: "/tmp", sessionID: "s", messageID: "m", abort: new AbortController().signal, metadata() {}, ask() {} } as any
     )
     const out = typeof result === "string" ? result : (result as any).output
-    expect(out).toContain("## Skill: openspec-orchestrate")
-    expect(out).toContain("四阶段")
+    expect(out).toContain("## Skill: java-dev-essentials")
     // Verify frontmatter stripped (body starts with content, not "---")
     expect(out).not.toMatch(/^---/m)
   })

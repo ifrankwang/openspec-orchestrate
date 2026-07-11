@@ -62,9 +62,11 @@ export function injectAgents(config: Record<string, unknown>): void {
       const perm = mapPermission(frontmatter)
       if (perm) agentConfig.permission = perm
 
+      const existingAgents = (config.agent as Record<string, unknown>) ?? {}
+      const existingAgent = existingAgents[name] as Record<string, unknown> | undefined
       config.agent = {
-        ...(config.agent as Record<string, unknown>),
-        [name]: agentConfig,
+        ...existingAgents,
+        [name]: { ...agentConfig, ...existingAgent },
       }
     }
   }

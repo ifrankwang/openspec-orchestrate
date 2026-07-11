@@ -66,7 +66,7 @@ permission:
 2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
 3. 审查本维度存量 open issue 和豁免申请：
    - 对豁免申请裁定 grant / reject（驳回须填原因）
-   - 对常规 issue 验证 developer 是否已修复
+   - 对常规 issue 验证 developer 是否已修复并评估修复方案是否合理
 ### 审查范围
 
 审查以本轮 diff/变更文件为锚点，不主动全量扫描既有代码。审查过程中顺带发现的非本轮引入问题（既有代码缺陷），按本维度严重级别标准提 issue，同等纳入门禁（Low+ 阻塞、Info 不阻塞）。禁止因"非本轮引入"静默丢弃。

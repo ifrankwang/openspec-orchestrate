@@ -222,7 +222,7 @@ describe("1. Happy Path — 完整流程", () => {
     expect(tg7.phases.review.completed).toBe(true)
 
     // 7. complete_task_group
-    const r5 = JSON.parse(await complete_task_group.execute({ merge_target: "main" }, o))
+    const r5 = JSON.parse(await complete_task_group.execute({}, o))
     expect(r5.status).toBe("ok")
     expect(r5.completed_task_group).toBe("1")
     expect(r5.next_task_group).toBe("2")
@@ -302,7 +302,7 @@ describe("2. 完整流程（无驳回）", () => {
     const tgQ = state.taskGroups.find((g: any) => g.id === "1")
     expect(tgQ.phases.review.completed).toBe(true)
 
-    await complete_task_group.execute({ merge_target: "main" }, o)
+    await complete_task_group.execute({}, o)
     state = readStateSync(wt, CID)
     const tgEnd = state.taskGroups.find((g: any) => g.id === "1")
     expect(tgEnd.status).toBe("completed")
@@ -365,7 +365,7 @@ describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
       else expect(res.status).toBe("ok")
     }
 
-    await complete_task_group.execute({ merge_target: "main" }, o)
+    await complete_task_group.execute({}, o)
     state = readStateSync(wt, CID)
     expect(state.taskGroups.find((g: any) => g.id === "1").status).toBe("completed")
 
@@ -571,7 +571,7 @@ describe("7. 多任务组 — 完成 group1 → 初始化 group2", () => {
       }, makeCtx(`openspec-reviewer-${dims[i]}`, wt))
     }
 
-    await complete_task_group.execute({ merge_target: "main" }, o)
+    await complete_task_group.execute({}, o)
 
     state = readStateSync(wt, CID)
     expect(state.taskGroups.find((g: any) => g.id === "1").status).toBe("completed")
@@ -1238,4 +1238,99 @@ describe("14. Task review auto-skip — issue-fix round", () => {
   })
 
   try { rmSync(root, { recursive: true, force: true }) } catch {}
+})
+
+// ═══════════════════════════════════════════════════
+//  Scenario 15: base_branch 自动推导与异常
+// ═══════════════════════════════════════════════════
+
+describe("15. base_branch 自动推导与异常", () => {
+  test("init 无 base_branch 自动推导当前分支", async () => {
+    const root = `/tmp/ft15a-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    fakeGit.currentBranch = "develop"
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    const state = readStateSync(wt, CID)
+    expect(state.baseBranch).toBe("develop")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("init 显式传 base_branch 正确使用", async () => {
+    const root = `/tmp/ft15b-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    await init.execute({ change_id: CID, current_task_group_id: "1", base_branch: "release/1.0" }, o)
+    const state = readStateSync(wt, CID)
+    expect(state.baseBranch).toBe("release/1.0")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("init detached HEAD 报错", async () => {
+    const root = `/tmp/ft15c-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    fakeGit.currentBranch = "HEAD"
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    const err = await init.execute({ change_id: CID, current_task_group_id: "1" }, o).catch((e: Error) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err.message).toMatch(/detached HEAD|显式.*base_branch/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("complete_task_group 自动使用 baseBranch 合并", async () => {
+    const root = `/tmp/ft15d-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt),
+         a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, current_task_group_id: "1", base_branch: "develop" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const state1 = readStateSync(wt, CID)
+    const devWt = state1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+
+    const state2 = readStateSync(wt, CID)
+    const tg = state2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
+    for (const dim of dims) {
+      await quality_review_submit.execute({ task_group_id: "1", passed: true, issues: [] }, makeCtx(`openspec-reviewer-${dim}`, wt))
+    }
+
+    const result = JSON.parse(await complete_task_group.execute({}, o))
+    expect(result.status).toBe("ok")
+    expect(result.merge_target).toBe("develop")
+
+    const finalState = readStateSync(wt, CID)
+    expect(finalState.taskGroups.find((g: any) => g.id === "1").status).toBe("completed")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
 })

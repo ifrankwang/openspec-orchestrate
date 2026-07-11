@@ -12,6 +12,7 @@ export class FakeGitRunner implements GitRunner {
   dirtyPaths = new Set<string>()
   mergedBranches: string[] = []
   mergeConflictOnNext = false
+  currentBranch = "main"
   callLog: string[] = []
 
   async run(worktree: string, args: string[]): Promise<string> {
@@ -42,7 +43,10 @@ export class FakeGitRunner implements GitRunner {
     }
 
     if (cmd === "merge-base") return this.baseRef
-    if (cmd === "rev-parse") return "abc123def456"
+    if (cmd === "rev-parse") {
+      if (rest[0] === "--abbrev-ref" && rest[1] === "HEAD") return this.currentBranch
+      return "abc123def456"
+    }
 
     if (cmd === "diff" && rest[0] === "--name-only") {
       return (this.diffs.get(worktree) ?? []).join("\n")

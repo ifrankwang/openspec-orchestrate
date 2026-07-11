@@ -509,6 +509,12 @@ async function getCurrentHead(worktree: string): Promise<string> {
   return runGit(worktree, ["rev-parse", "HEAD"])
 }
 
+async function getCurrentBranch(worktree: string): Promise<string> {
+  const branch = (await runGit(worktree, ["rev-parse", "--abbrev-ref", "HEAD"])).trim()
+  if (branch === "HEAD") throw new Error("当前处于 detached HEAD 状态，无法自动推断 base_branch。请显式传入 base_branch 参数。")
+  return branch
+}
+
 async function getMergeBase(worktree: string, baseBranch: string): Promise<string> {
   return runGit(worktree, ["merge-base", "HEAD", baseBranch])
 }
@@ -655,6 +661,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   lines.push("# 编排进度", "")
   lines.push(`**变更**: ${state.changeId}`)
   lines.push(`**任务组**: ${tg.id} — ${tg.name}`)
+  lines.push(`**基准分支**: ${state.baseBranch}`)
   lines.push(`**当前阶段**: ${tg.status}`, "")
   lines.push("## 阶段进展", "")
   lines.push("| 阶段 | 状态 |")
@@ -1048,7 +1055,7 @@ export const init = tool({
   args: {
     change_id: tool.schema.string().min(1).describe("OpenSpec 变更 ID"),
     current_task_group_id: tool.schema.string().min(1).describe("当前要初始化的任务组 ID。仅此组被重建（in_progress），其余组原样保留。首次初始化时当前组之前的组为 not_started。"),
-    base_branch: tool.schema.string().default("main").optional().describe("基准分支名（如 main、master），用于计算 merge-base 和 worktree fork 源。默认 main。"),
+    base_branch: tool.schema.string().optional().describe("基准分支名（如 main、develop），用于计算 merge-base 和 worktree fork 源。未传则自动从当前 git 分支推导。"),
     recovery: tool.schema.object({
       phase: tool.schema.enum(PHASE_ORDER).describe("恢复到哪个阶段"),
       worktree_path: tool.schema.string().min(1).describe("已有 worktree 的绝对路径"),
@@ -1123,7 +1130,7 @@ export const init = tool({
     const taskInjectionStatus: TaskStatus = args.recovery?.phase === "review" ? "verified" : "open"
 
     let state = await readStateByChangeId(context.worktree, args.change_id)
-    const baseBranch = args.base_branch || "main"
+    const baseBranch = args.base_branch || await getCurrentBranch(context.worktree)
     if (state) {
       state.baseBranch = state.baseBranch || baseBranch
       const existingMap = new Map(state.taskGroups.map((g) => [g.id, g]))
@@ -1505,11 +1512,9 @@ export const status = tool({
 
 export const complete_task_group = tool({
   description:
-    "完成任务组收尾：合并 task-group 分支到 merge_target → 清理 worktree 与分支 → 推进阶段。合并冲突时中止并返回 blocked（保留 worktree/分支）。",
-  args: {
-    merge_target: tool.schema.string().min(1).describe("合并目标本地分支名（如 main、develop）"),
-  },
-  async execute(args, context) {
+    "完成任务组收尾：合并 task-group 分支到 baseBranch → 清理 worktree 与分支 → 推进阶段。合并冲突时中止并返回 blocked（保留 worktree/分支）。",
+  args: {},
+  async execute(_args, context) {
     assertOrchestrator(context, "opx_orch_complete_task_group")
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
@@ -1536,16 +1541,17 @@ export const complete_task_group = tool({
     if (openTasks.length > 0) {
       throw new Error(`存在 ${openTasks.length} 个未完成 task。`)
     }
-    // 合并分支到目标
+    // 合并分支到 baseBranch
+    const mergeTarget = state.baseBranch
     if (tg.branchName) {
-      const mergeResult = await mergeBranchToTarget(context.worktree, tg.branchName, args.merge_target)
+      const mergeResult = await mergeBranchToTarget(context.worktree, tg.branchName, mergeTarget)
       if (!mergeResult.success) {
         return JSON.stringify(
           {
             status: "blocked",
             merge_conflict: true,
             message:
-              `合并到 "${args.merge_target}" 时发生冲突，已中止合并。` +
+              `合并到 "${mergeTarget}" 时发生冲突，已中止合并。` +
               `请手动在目标分支解决冲突后完成合并 (git merge ${tg.branchName})，` +
               `完成后重新调 opx_orch_complete_task_group 完成收尾。worktree 与分支已保留。`,
           },
@@ -1572,11 +1578,11 @@ export const complete_task_group = tool({
       {
         status: "ok",
         completed_task_group: tg.id,
-        merge_target: args.merge_target,
+        merge_target: mergeTarget,
         next_task_group: next?.id ?? null,
         message: next
-          ? `任务组 "${tg.name}" 已完成并合并到 "${args.merge_target}"。下一任务组: "${next.name}"。请调用 opx_orch_init 开始。`
-          : `任务组 "${tg.name}" 已完成并合并到 "${args.merge_target}"。所有任务组均已完成。`,
+          ? `任务组 "${tg.name}" 已完成并合并到 "${mergeTarget}"。下一任务组: "${next.name}"。请调用 opx_orch_init 开始。`
+          : `任务组 "${tg.name}" 已完成并合并到 "${mergeTarget}"。所有任务组均已完成。`,
       },
       null,
       2

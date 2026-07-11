@@ -978,3 +978,35 @@ describe("B7. computeRequiredDims 异常回退", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ════════════════════════════════════════════════════════════════
+//  Behavior 8: 编排视图暴露 baseBranch
+// ════════════════════════════════════════════════════════════════
+
+describe("B8. 编排视图暴露 baseBranch", () => {
+  test("opx_status 编排者头部含基准分支行", async () => {
+    const root = `/tmp/optimize-b8-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    // 自动推导：currentBranch="main"
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    const view = await status.execute({}, o)
+    const str = typeof view === "string" ? view : JSON.stringify(view)
+    expect(str).toMatch(/\*\*基准分支\*\*: main/)
+
+    // 显式指定：用独立 changeId 验证
+    const CID2 = "test-optimize-b8-dev"
+    const tasksMdPath2 = join(wt, "openspec", "changes", CID2, "tasks.md")
+    mkdirSync(join(wt, "openspec", "changes", CID2), { recursive: true })
+    writeFileSync(tasksMdPath2, "## 1. G1\n\n- [ ] 1.1 T1\n", "utf-8")
+    await init.execute({ change_id: CID2, current_task_group_id: "1", base_branch: "develop" }, o)
+    const view2 = await status.execute({}, o)
+    const str2 = typeof view2 === "string" ? view2 : JSON.stringify(view2)
+    expect(str2).toMatch(/\*\*基准分支\*\*: develop/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})

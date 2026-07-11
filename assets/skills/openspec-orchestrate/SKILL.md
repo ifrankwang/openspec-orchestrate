@@ -163,10 +163,8 @@ review 通过（或用户放弃后豁免完毕）后，编排者执行收尾。t
 编排者执行：
 
 1. **获取状态**：调用 `opx_status` 获取 worktree 路径与分支名
-2. **列出目标分支**：执行 `git branch` 列出本地分支
-3. **用户选择合并目标**：向用户展示分支列表，用 question 询问合并目标
-4. 调用 `opx_orch_complete_task_group(merge_target="<target>")`——工具自动校验、合并、清理，冲突时返回 blocked。完成当前任务组后 `currentTaskGroupId` 自动推进到下一个 pending 组。
-5. **输出汇总**：向用户展示任务组审查汇总（概览 + 处理情况）
+2. **合并**：调用 `opx_orch_complete_task_group()`——工具自动合并到基准分支（`baseBranch`）、清理、推进。冲突时返回 blocked，向用户报告后手动解决后重新调用。
+3. **输出汇总**：向用户展示任务组审查汇总（概览 + 处理情况）
 
 ### 问题汇报格式
 

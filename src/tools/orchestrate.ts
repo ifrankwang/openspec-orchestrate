@@ -642,6 +642,7 @@ function renderIssueItem(i: IssueItem): string {
   lines.push(`  - 描述：${i.description}`)
   if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
   if (i.status === "exemption" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
+  if (i.status === "rejected" && i.rejectReason) lines.push(`  - 驳回原因：${i.rejectReason}`)
   lines.push(`  - 首次报告轮次：${i.firstRound}`)
   return lines.join("\n")
 }
@@ -1183,6 +1184,8 @@ export const init = tool({
           }
           if (rl === "quality") {
             phases.review.task.completed = true
+            phases.review.quality.retryCount = 0
+            phases.review.quality.progress = createEmptyQualityProgress()
           }
         }
 
@@ -1665,6 +1668,11 @@ const requestExemptItem = tool.schema.object({
   reason: tool.schema.string().min(1).describe("豁免理由"),
 })
 
+const rejectedIssueItem = tool.schema.object({
+  issue_id: tool.schema.string().min(1).describe("驳回的 issue ID"),
+  reason: tool.schema.string().min(1).describe("驳回原因"),
+})
+
 export const dev_submit = tool({
   description:
     "developer 提交实现结果。根据 status 区分 task 提交还是 issue 修复：\n" +
@@ -1848,28 +1856,65 @@ function deduplicateAndAddIssues(
 }
 
 /**
- * 豁免完整性门禁 —— 所有 status==="exemption" 的 issue 必须被 exempt_issue_ids ∪ reject_exempt_issue_ids 覆盖
- * 遗漏则 fail-fast 报错，不改任何状态
- * 覆盖项：exempt→exempted（写入 exemptReason），reject→rejected（写入 rejectReason）
+ * 统一 issue 裁定门禁 —— 所有活跃 issue（submitted ∪ exemption）必须被显式裁定
+ * 覆盖项：fixed_issue_ids→verified，exempt_issue_ids→exempted，rejected_issue_ids→rejected（写入 reason）
+ * 遗漏则 fail-fast 报错
  * dimension? 可选过滤（quality 维度使用，task/tool 层不需要）
  */
-function applyExemptionGate(
+function applyReviewGate(
   issues: IssueItem[],
+  fixedIds: string[],
   exemptIds: string[],
-  rejectExemptIds: string[],
+  rejectedIssueInputs: Array<{ issue_id: string; reason: string }>,
   dimension?: Dimension
 ): void {
   const filtered = dimension
-    ? issues.filter((i) => i.dimension === dimension && i.status === "exemption")
-    : issues.filter((i) => i.status === "exemption")
-  const covered = new Set([...exemptIds, ...rejectExemptIds])
-  const uncovered = filtered.filter((i) => !covered.has(i.id))
+    ? issues.filter((i) => (i.status === "submitted" || i.status === "exemption") && i.dimension === dimension)
+    : issues.filter((i) => i.status === "submitted" || i.status === "exemption")
+
+  const fixedSet = new Set(fixedIds)
+  const exemptSet = new Set(exemptIds)
+  const rejectedSet = new Set(rejectedIssueInputs.map((r) => r.issue_id))
+
+  // 冲突校验：同一 id 不可出现在多个列表
+  for (const id of fixedIds) {
+    if (exemptSet.has(id)) throw new Error(`issue #${id} 同时出现在 fixed_issue_ids 和 exempt_issue_ids 中。`)
+    if (rejectedSet.has(id)) throw new Error(`issue #${id} 同时出现在 fixed_issue_ids 和 rejected_issue_ids 中。`)
+  }
+  for (const id of exemptIds) {
+    if (rejectedSet.has(id)) throw new Error(`issue #${id} 同时出现在 exempt_issue_ids 和 rejected_issue_ids 中。`)
+  }
+
+  // 异常校验：状态与列表不匹配
+  for (const id of fixedIds) {
+    const issue = issues.find((i) => i.id === id)
+    if (issue && issue.status !== "submitted") {
+      throw new Error(`issue #${id} 状态为 ${issue.status}，不可通过 fixed_issue_ids 标记 verified（仅 submitted 可标记）。`)
+    }
+  }
+  for (const id of exemptIds) {
+    const issue = issues.find((i) => i.id === id)
+    if (issue && issue.status !== "exemption") {
+      throw new Error(`issue #${id} 状态为 ${issue.status}，不可通过 exempt_issue_ids 豁免（仅 exemption 可豁免）。`)
+    }
+  }
+
+  // 完整性门禁：所有活跃 issue 必须被覆盖
+  const uncovered = filtered.filter((i) => !fixedSet.has(i.id) && !exemptSet.has(i.id) && !rejectedSet.has(i.id))
   if (uncovered.length > 0) {
     throw new Error(
-      `豁免完整性门禁不通过：以下 ${uncovered.length} 个 exemption issue 未被 exempt_issue_ids 或 reject_exempt_issue_ids 覆盖：` +
-      uncovered.map((i) => `#${i.id}`).join(", ") +
-      `。提交时必须对所有未裁定的豁免申请明确结论。`
+      `以下 ${uncovered.length} 个活跃 issue（submitted/exemption）未被 fixed_issue_ids、exempt_issue_ids 或 rejected_issue_ids 覆盖：` +
+      uncovered.map((i) => `#${i.id}(${i.status})`).join(", ") +
+      `。所有活跃 issue 必须有明确裁定。`
     )
+  }
+
+  // 执行裁定
+  for (const id of fixedIds) {
+    const issue = issues.find((i) => i.id === id)
+    if (issue && issue.status === "submitted") {
+      issue.status = "verified"
+    }
   }
   for (const id of exemptIds) {
     const issue = issues.find((i) => i.id === id)
@@ -1878,33 +1923,11 @@ function applyExemptionGate(
       if (!issue.exemptReason) issue.exemptReason = "(由审核者豁免)"
     }
   }
-  for (const id of rejectExemptIds) {
-    const issue = issues.find((i) => i.id === id)
-    if (issue && issue.status === "exemption") {
+  for (const r of rejectedIssueInputs) {
+    const issue = issues.find((i) => i.id === r.issue_id)
+    if (issue && (issue.status === "submitted" || issue.status === "exemption")) {
       issue.status = "rejected"
-      issue.rejectReason = issue.rejectReason || "(豁免申请被驳回)"
-    }
-  }
-}
-
-/** 处理 fixed_issue_ids：标记 verified + 省略即驳回 */
-function applyFixedIssueGate(
-  issues: IssueItem[],
-  fixedIds: string[],
-  dimension?: Dimension
-): void {
-  const filtered = dimension
-    ? issues.filter((i) => i.dimension === dimension && i.status === "submitted")
-    : issues.filter((i) => i.status === "submitted")
-  for (const id of fixedIds) {
-    const issue = issues.find((i) => i.id === id)
-    if (issue && issue.status === "submitted") {
-      issue.status = "verified"
-    }
-  }
-  for (const issue of filtered) {
-    if (!fixedIds.includes(issue.id)) {
-      issue.status = "rejected"
+      issue.rejectReason = r.reason
     }
   }
 }
@@ -1922,7 +1945,7 @@ export const tool_review_submit = tool({
     issues: tool.schema.array(toolIssueItem).optional().describe("跨维 issue，每个 item 需带 dimension"),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
     exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
-    reject_exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("驳回豁免申请的 issue ID 列表"),
+    rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
     test_results: tool.schema.string().optional().describe("UT 运行结果摘要"),
   },
   async execute(args, context) {
@@ -1952,11 +1975,8 @@ export const tool_review_submit = tool({
       }
     }
 
-    // 处理 fixed_issue_ids（标记 verified + 省略即驳回），维度不限
-    applyFixedIssueGate(tg.issues, args.fixed_issue_ids || [])
-
-    // 处理豁免完整性门禁
-    applyExemptionGate(tg.issues, args.exempt_issue_ids || [], args.reject_exempt_issue_ids || [])
+    // 处理 issue 裁定（fixed→verified / exempt→exempted / rejected→rejected），维度不限
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [])
 
     // 添加新 issue（去重），标记 isKnownIssue=true 供 quality 层去重
     let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
@@ -2039,12 +2059,13 @@ export const task_review_submit = tool({
     "任务审核层提交。验证 task 产出、服务启动、接口可用性、测试代码审查。调用者必须为 openspec-reviewer-task。",
   args: {
     task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
+    passed: tool.schema.boolean().describe("任务层是否通过"),
     verified_task_ids: tool.schema.array(tool.schema.string()).optional().describe("已验证完成的 task ID 列表"),
     failed_task_ids: tool.schema.array(taskVerifyResult).optional().describe("未完成的 task 列表（含原因）"),
     issues: tool.schema.array(reviewIssue).optional().describe("测试代码审查 issue"),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
     exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
-    reject_exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("驳回豁免申请的 issue ID 列表"),
+    rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
   },
   async execute(args, context) {
     assertAgent(context, "opx_task_review_submit", ["openspec-reviewer-task"])
@@ -2118,9 +2139,18 @@ export const task_review_submit = tool({
       }
     }
 
-    // Fixed issue gate + Exemption gate
-    applyFixedIssueGate(tg.issues, args.fixed_issue_ids || [])
-    applyExemptionGate(tg.issues, args.exempt_issue_ids || [], args.reject_exempt_issue_ids || [])
+    // passed 一致性校验
+    if (args.passed) {
+      if (failed.length > 0) {
+        throw new Error(`任务层审核声称 passed=true，但存在 ${failed.length} 个未通过的 task。`)
+      }
+      if (hasBlockingIssues(tg.issues)) {
+        throw new Error(`任务层审核声称 passed=true，但存在阻塞 issue。`)
+      }
+    }
+
+    // 统一 issue 裁定门禁
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [])
 
     tg.phases.review.task.completed = true
     await writeState(context.worktree, state)
@@ -2135,9 +2165,7 @@ export const task_review_submit = tool({
     }
 
     // 推进判定
-    const allPassed = verified.length > 0 && failed.length === 0
-    const hasBlocking = hasBlockingIssues(tg.issues)
-    if (allPassed && !hasBlocking) {
+    if (args.passed) {
       return JSON.stringify({
         status: "ok",
         phase: "review(task=completed)",
@@ -2183,7 +2211,7 @@ export const quality_review_submit = tool({
     issues: tool.schema.array(reviewIssue).optional().describe("新报审查 issue"),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
     exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
-    reject_exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("驳回豁免申请的 issue ID 列表"),
+    rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
   },
   async execute(args, context) {
     const agentToDim = Object.fromEntries(
@@ -2223,11 +2251,8 @@ export const quality_review_submit = tool({
       }
     }
 
-    // Fixed issue gate（本维度）
-    applyFixedIssueGate(tg.issues, args.fixed_issue_ids || [], dimension)
-
-    // 豁免完整性门禁（本维度）
-    applyExemptionGate(tg.issues, args.exempt_issue_ids || [], args.reject_exempt_issue_ids || [], dimension)
+    // 统一 issue 裁定门禁（本维度）
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], dimension)
 
     // 去重并添加新 issue
     let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1

@@ -1,6 +1,6 @@
 {
   "name": "openspec-orchestrate",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -9,7 +9,10 @@
       "types": "./src/index.ts"
     }
   },
-  "files": ["src", "assets"],
+  "files": [
+    "src",
+    "assets"
+  ],
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit"

@@ -255,6 +255,10 @@ function isBlockingIssue(i: { severity: string }): boolean {
   return (BLOCKING_SEVERITIES as readonly string[]).includes(i.severity)
 }
 
+function allTasksVerified(tasks: TaskItem[]): boolean {
+  return tasks.length > 0 && tasks.every((t) => t.status === "verified")
+}
+
 // 存在待确认修复（submitted）或待裁定豁免（exemption）issue 的维度集
 function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
   const dims = new Set<string>()
@@ -769,6 +773,26 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
     lines.push("请用 question 向用户展示上述异常，确认后按对应建议调用 opx_orch_init(recovery=...) 修复。")
   } else {
     lines.push("未发现状态异常。")
+  }
+  // ── 下一步 ──
+  lines.push("", "## 下一步", "")
+  if (checks.length > 0) {
+    lines.push("以上状态异常，请按 recovery 建议修复。")
+  } else if (tg.status === "completed") {
+    lines.push("本次任务组已全部完成。")
+  } else if (tg.phases.review.completed) {
+    lines.push("所有审核层已完成，调用 `opx_orch_complete_task_group` 收尾。")
+  } else {
+    const agents = deriveCurrentAgents(tg)
+    if (agents.length > 0) {
+      const agentList = agents.map((a) => `\`${a}\``).join("、")
+      lines.push(`分派子代理：${agentList}。`)
+      if (tg.status === "review" && tg.phases.review.task.completed && !tg.phases.review.tool.completed) {
+        lines.push("（说明：task 层已自动跳过，tool review 完成后直接进入 quality review）")
+      }
+    } else {
+      lines.push("（无待分派项，请检查状态）")
+    }
   }
   return lines.join("\n")
 }
@@ -1785,6 +1809,12 @@ export const dev_submit = tool({
       nextMsg = "请分派 openspec-reviewer-tool 开始 tool review"
     }
 
+    // 跳过判定：修复轮无待验证 task 时跳过 task review
+    if (allTasksVerified(tg.tasks)) {
+      tg.phases.review.task.completed = true
+      nextMsg = "本轮无待验证 task，task 层已自动通过。tool review 完成后直接进入 quality review。"
+    }
+
     await writeState(context.worktree, state)
     return JSON.stringify(
       {
@@ -1995,7 +2025,7 @@ export const tool_review_submit = tool({
     if (tg.phases.review.tool.completed) {
       throw new Error("tool 层审核报告已提交，不允许重复提交。")
     }
-    if (tg.phases.review.task.completed || tg.phases.review.quality.completed) {
+    if ((tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) || tg.phases.review.quality.completed) {
       throw new Error("后续层审核报告已提交，tool 层不可再提交。")
     }
     assertPassWithIssues(args.passed, args.issues || [], "opx_tool_review_submit")
@@ -2123,7 +2153,7 @@ export const task_review_submit = tool({
     if (!tg.phases.review.tool.completed) {
       throw new Error("tool 层审核未完成，task 层不可提交。")
     }
-    if (tg.phases.review.task.completed) {
+    if (tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) {
       throw new Error("task 层审核报告已提交，不允许重复提交。")
     }
 
@@ -2216,18 +2246,15 @@ export const task_review_submit = tool({
         throw new Error(`任务层审核声称 passed=true，但存在阻塞 issue。`)
       }
     }
+    if (!args.passed && failed.length === 0) {
+      throw new Error(
+        `任务层审核声称 passed=false，但 failed_task_ids 为空。` +
+        `passed=false 时必须至少指定一个 failed_task_id 标记不通过的 task。`
+      )
+    }
 
     tg.phases.review.task.completed = true
     await writeState(context.worktree, state)
-
-    // 无待审 task 时自动跳过
-    if (submittedTasks.length === 0 && verified.length === 0 && failed.length === 0 && !hasBlockingIssues(tg.issues)) {
-      return JSON.stringify({
-        status: "ok",
-        phase: "review(task=completed)",
-        message: "task 层审核通过（本轮无待审 task，自动跳过）。",
-      })
-    }
 
     // 推进判定
     if (args.passed) {

@@ -27,6 +27,10 @@ tests/                — Bun test，100% fake-git（无真实 git 依赖）
 
 ## 治理原则
 
+### 编排流转单一事实源
+
+编排的 next-step（下一步分派谁 / 调用什么工具）由 `opx_status` 工具权威产出。SKILL、orchestrator agent 定义不得重复描述具体阶段流转顺序（如 passed=true→下一层、passed=false→回上一阶段），仅描述原则与角色职责边界。工具产出与文档描述之间的冲突以工具为准。
+
 ### 工具/Skill/Agent 三者逻辑必须统一一致
 
 工具、skill 文档（SKILL.md）、agent 定义（agent.md）三者描述的是同一套编排逻辑。修改其中任意一个，必须同步更新另外两个。三种文件中的术语、参数名、流程描述、角色职责等必须完全一致，不可因疏漏出现矛盾。

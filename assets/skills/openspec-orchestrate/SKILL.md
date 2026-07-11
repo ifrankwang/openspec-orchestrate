@@ -92,69 +92,25 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 
 初始化或恢复完成后，分派子代理前先调用 `opx_status` 确认当前处于对应阶段/层。编排者视图包含当前阶段和 review 子层进度，确保不跳阶段或错层分派。
 
+### 调度原则
+
+每次子代理返回后，编排者调 `opx_status` 取权威"下一步"指令并遵循，不自行推断阶段流转。分派/推进决策以工具返回为准。
+
 ### Phase 1: 架构师复核（task_analysis）
 
-编排者分派 `openspec-architect`。architect 复核完成后提交结果。
-
-- **passed=true**：编排者调 `opx_orch_set_worktree` 进入 dev 阶段。
-- **passed=false**：编排者用 question 向用户展示信息缺口并询问处理方式。用户答复后重新分派 architect 修复，通过后调 `opx_orch_set_worktree` 进入 dev 阶段。
+分派 `openspec-architect`。architect 复核完成后调用 `opx_arch_submit` 提交。提交后调 `opx_status` 取下一步指令。
 
 ### Phase 2: 开发实施（dev_impl）
 
 `task_analysis` 完成后，编排者调用 `opx_orch_set_worktree()`——无需传参，工具自动按规范生成/复用 worktree。进入开发阶段时工具自动按最终 tasks.md 刷新当前组任务列表与 relevantSpecs。
 
-Developer 实施 task：
-
-```
-developer 实现 → 提交 → 工具自动进入 review 阶段
-```
-
-**Developer 实施**。编排者分派 `openspec-developer`。developer 实施 task 后先 commit 再提交。
-
-**进入 Review**：`opx_dev_submit` 提交后工具自动进入 review 阶段。编排者直接分派 `openspec-reviewer-tool` 开始 tool review，无需手动 recovery。
+分派 `openspec-developer`。developer 实施 task 后先 commit 再调用 `opx_dev_submit` 提交。提交后调 `opx_status` 取下一步指令。
 
 ### Phase 3: Review（三层门禁）
 
-review 阶段按 tool→task→quality 严格顺序执行。任一层不通过则立即回 dev_impl，每层独立重试 3 轮计数。
+review 阶段按 tool→task→quality 严格顺序执行。任一层不通过则回 dev_impl，每层独立重试计数。
 
-#### 第一层：tool review（确定性）
-
-编排者分派 `openspec-reviewer-tool`。tool reviewer 完成确定性检查后提交。
-
-- **passed=true**：进入第二层 task review
-- **passed=false**：回 Phase 2 dev_impl 修复。retryCount++，>3 轮向用户告警。
-
-#### 第二层：task review（服务启动 + 测试审查）
-
-编排者分派 `openspec-reviewer-task`。task reviewer 完成 task 产出和测试审查后提交。
-
-- **passed=true**：进入第三层 quality review
-- **passed=false**：回 Phase 2 dev_impl 修复。retryCount++，>3 轮向用户告警。
-
-#### 第三层：quality review（5 维 AI 语义审查）
-
-编排者按"本轮激活维度"并行分派 quality reviewer（遵循 `superpowers:dispatching-parallel-agents`）：
-
-- **首轮**（retryCount=0）：并行分派全部 5 个维度（style / architecture / performance / security / maintainability），建立审查基线
-- **修复轮**（retryCount≥1）：仅并行分派本轮存在 submitted issue 的维度；其余维度沿用上轮通过结论，不再分派
-
-同一轮内的多个 quality reviewer 必须并行分派，不得串行。
-
-##### 结果处理
-
-- **全部 passed**：Phase 3 完成，等待收尾工具
-- **存在不通过维度（retry ≤ 3）**：分派 `openspec-developer` 修复，若有豁免申请先分派对应维度 quality reviewer 裁定。
-- **retry > 3（needs_user_decision）**：编排者用 `question` 工具向用户展示剩余 issue 摘要，据答案调用 `opx_orch_resolve_review`：
-  - **继续修复**（`decision="continue"`）：工具重置重试与审查进度，编排者随后分派修复与审查。
-  - **放弃**（`decision="giveup"`）：工具豁免剩余 issue 并标记 review 完成，编排者随后调用收尾工具。
-
-##### 门禁拒绝处理
-
-若 quality reviewer 分派后 `opx_status` 返回"⛔ 阶段门禁"拒绝（门禁返回空预期角色列表），按以下步骤诊断：
-
-1. 调用 `opx_status` 自行读取状态（orchestrator 无门禁，可获取完整视图）
-2. 若 opx_status 展示的阶段进展与已知状态矛盾——直接 `read` state JSON（`.opencode/.orchestrate_state/<change_id>.json`）交叉验证各 review 子层的 `completed` 和 `retryCount`
-3. 若确认 state 矛盾属于工具 bug 导致的僵尸状态，用 `opx_orch_init(recovery={ review_layer: "quality", ... })` 修复后重新分派
+同上：每轮 reviewer 提交后调 `opx_status` 取下一步指令。
 
 ### Phase 4: 任务组收尾
 

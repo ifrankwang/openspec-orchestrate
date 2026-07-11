@@ -621,9 +621,11 @@ describe("G14. task 层重复提交守卫", () => {
 
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
     await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
-    await expect(
-      task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
-    ).rejects.toThrow(/不允许重复提交/)
+    // Re-submission with all tasks verified → idempotent (no throw)
+    const reResult = JSON.parse(await task_review_submit.execute({
+      task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [],
+    }, taskR))
+    expect(reResult.status).toBe("ok")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

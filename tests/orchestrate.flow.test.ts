@@ -1132,7 +1132,7 @@ describe("13. 去阶段化 — dev 在 dev_impl 状态下可见 review issue", (
     const tgFinal = state.taskGroups.find((g: any) => g.id === "1")
     expect(tgFinal.status).toBe("review")
     expect(tgFinal.phases.review.tool.completed).toBe(false)
-    expect(tgFinal.phases.review.task.completed).toBe(false)
+    expect(tgFinal.phases.review.task.completed).toBe(true)
     expect(tgFinal.phases.review.quality.completed).toBe(false)
     expect(tgFinal.issues.find((i: any) => i.id === issueId).status).toBe("submitted")
 
@@ -1206,7 +1206,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
     state = readStateSync(wt, CID)
     const tgFix = state.taskGroups.find((g: any) => g.id === "1")
     expect(tgFix.status).toBe("review")
-    expect(tgFix.phases.review.task.completed).toBe(false)
+    expect(tgFix.phases.review.task.completed).toBe(true)
     expect(tgFix.phases.review.quality.retryCount).toBe(0)
     expect(tgFix.tasks.every((t: any) => t.status === "verified")).toBe(true)
 
@@ -1220,7 +1220,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
     }, taskR))
     expect(result.status).toBe("ok")
     expect(result.phase).toBe("review(task=completed)")
-    expect(result.message).toContain("自动跳过")
+    expect(result.message).toContain("task 层审核通过")
 
     // --- 6. State reflects auto-completed task layer ---
     state = readStateSync(wt, CID)

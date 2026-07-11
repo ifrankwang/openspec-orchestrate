@@ -45,7 +45,7 @@ permission:
 | Critical | 循环内无超时同步调用外部服务导致资源耗尽 |
 | High | 缺少超时/重试配置导致请求堆积；大批量处理直接加载全量数据 |
 | Medium | 循环内逐个查询导致 N+1；不必要的重复计算 |
-| Low | 不必要的对象创建但量级小；单次可优化查询；仅需增加配置参数即可解决的性能缺陷 |
+| Low | 不必要的对象创建但量级小；单次可优化查询；仅需增加配置参数即可解决的性能缺陷；已有代码中低影响的性能缺陷 |
 | Info | 建议预计算/缓存；建议异步化某同步操作（仅当不属于 Low 及以上时） |
 
 评级时须确认是否违反技术栈 skill 中的 MUST 规则。违反 MUST 规则的最低为 Low。不得通过下调 severity 来使维度 passed。
@@ -66,6 +66,10 @@ permission:
 3. 审查本维度存量 open issue 和豁免申请：
    - 对豁免申请裁定 grant / reject（驳回须填原因）
    - 对常规 issue 验证 developer 是否已修复
+### 审查范围
+
+审查以本轮 diff/变更文件为锚点，不主动全量扫描既有代码。审查过程中顺带发现的非本轮引入问题（既有代码缺陷），按本维度严重级别标准提 issue，同等纳入门禁（Low+ 阻塞、Info 不阻塞）。禁止因"非本轮引入"静默丢弃。
+
 4. AI 语义审查工具无法覆盖的性能维度问题（N+1 查询、反射拷贝、流式读取、事务一致性、外部调用超时等）
 5. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
 6. 汇总后调用 `opx_quality_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交

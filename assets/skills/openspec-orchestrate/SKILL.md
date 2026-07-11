@@ -25,7 +25,7 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 1. **四阶段 + Review 三层门禁**——架构师 / 开发+review 三层 / 审核人。dev_impl 后所有修改代码由 developer 在 dev_impl 阶段实施。
 2. **子 agent 无状态，编排 agent 有状态**——子代理上下文通过 `opx_status` 按角色路由获取，编排者不得转述；分派 prompt 仅含分派指令 + 轮次/阶段标识。state 文件按 changeId 拆分持久化到 `.opencode/.orchestrate_state/<change_id>.json`，状态异常须走 `opx_orch_init(recovery=...)` 修复，不得直接修改。
 3. **不越权**——不要代替子代理做他们的工作，不要替用户修改 spec/design/tasks。
-4. **严格按序**——每个任务组按 phases 顺序执行，review 完成后才能进入收尾。review 内部 tool→task→quality 严格顺序，任一层 fail 立即回 dev_impl。
+4. **严格按序**——每个任务组按 phases 顺序执行，review 完成后才能进入收尾。review 内部 tool→task→quality 严格顺序。
 5. **不过度沟通**——任务组内部不停下来向用户汇报，持续执行直到阻塞或完成。每个任务组完成时输出问题汇报。
 6. **状态透明**——切换阶段时使用 `opx_status` 查看当前进度。
 7. **断点续传**——developer 因步骤限制中断后重新分派即可继续，无需编排者保存已完成子任务列表。
@@ -58,18 +58,15 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 
 ### 初始化与进度恢复
 
-1. 调用 `opx_status` 检查当前 task group 状态。编排者视图末尾含**确定性一致性分析**段，列出异常类型与建议 recovery 参数：
-   - 阶段逆序（status 与 phase.completed 矛盾）→ 建议 phase 取已完成的最末 phase
-   - 缺 worktree（status=dev_impl/review 但 worktreePath=null）→ 先建 worktree 或 recovery 补全
-   - 缺 executionBoundary（status 越过 task_analysis 但边界未设置）→ 建议 recovery 回到 task_analysis
-   - review 内部矛盾（某维度标记 passed 但仍有阻塞 issue）→ 建议保持当前 phase
-   - 磁盘 worktree 未注册（state 中对应组 branchName=null）→ 附完整 recovery 参数模板
+调用 `opx_status` 检查当前 task group 状态。编排者视图末尾含**确定性一致性分析**段，列出异常类型与建议 recovery 参数：
 
-   注：一致性分析列出的 recovery 参数为参考建议，编排 agent 需向用户展示后确认具体 phase 值。
+- 阶段逆序 → 建议 phase 取已完成的最末 phase
+- 缺 worktree → 先建 worktree 或 recovery 补全
+- 缺 executionBoundary → 建议 recovery 回到 task_analysis
+- review 内部矛盾（某维度标记 passed 但仍有阻塞 issue）→ 建议保持当前 phase
+- 磁盘 worktree 未注册 → 附完整 recovery 参数模板
 
-2. 向用户展示一致性分析结果与磁盘 worktree 发现，用 question 询问是否修复。用户确认后调用 `opx_orch_init(recovery=...)` 修复。
-
-3. 调用 `opx_orch_init`：
+一致性分析列出的 recovery 参数为参考建议，编排 agent 需向用户展示后确认具体 phase 值。向用户展示分析结果与磁盘 worktree 发现，用 question 询问是否修复。用户确认后调用 `opx_orch_init(recovery=...)`。
 
 ```json
 // 全新开始（无待恢复进度）：
@@ -98,29 +95,23 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 
 ### Phase 1: 架构师复核（task_analysis）
 
-分派 `openspec-architect`。architect 复核完成后调用 `opx_arch_submit` 提交。提交后调 `opx_status` 取下一步指令。
+分派 `openspec-architect`。architect 完成后调 `opx_status` 取下一步。
 
 ### Phase 2: 开发实施（dev_impl）
 
-`task_analysis` 完成后，编排者调用 `opx_orch_set_worktree()`——无需传参，工具自动按规范生成/复用 worktree。进入开发阶段时工具自动按最终 tasks.md 刷新当前组任务列表与 relevantSpecs。
-
-分派 `openspec-developer`。developer 实施 task 后先 commit 再调用 `opx_dev_submit` 提交。提交后调 `opx_status` 取下一步指令。
+`task_analysis` 完成后，调用 `opx_orch_set_worktree()` 确保 worktree 就绪，然后分派 `openspec-developer`。developer 完成后调 `opx_status` 取下一步。
 
 ### Phase 3: Review（三层门禁）
 
-review 阶段按 tool→task→quality 严格顺序执行。任一层不通过则回 dev_impl，每层独立重试计数。
+review 阶段按 tool→task→quality 严格顺序执行，每层独立重试计数。
 
-同上：每轮 reviewer 提交后调 `opx_status` 取下一步指令。
+每轮 reviewer 完成后调 `opx_status` 取下一步。
 
 ### Phase 4: 任务组收尾
 
-review 通过（或用户放弃后豁免完毕）后，编排者执行收尾。task_group 仅在此阶段标记 completed。合并与清理过程由工具完成。
+review 通过（或放弃豁免完毕）后，调用 `opx_orch_complete_task_group()` 收尾——工具自动合并到基准分支、清理 worktree/分支、推进。冲突时返回 blocked，向用户报告后手动解决。
 
-编排者执行：
-
-1. **获取状态**：调用 `opx_status` 获取 worktree 路径与分支名
-2. **合并**：调用 `opx_orch_complete_task_group()`——工具自动合并到基准分支（`baseBranch`）、清理、推进。冲突时返回 blocked，向用户报告后手动解决后重新调用。
-3. **输出汇总**：向用户展示任务组审查汇总（概览 + 处理情况）
+完成后按问题汇报格式输出汇总。
 
 ### 问题汇报格式
 

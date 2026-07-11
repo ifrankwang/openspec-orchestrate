@@ -70,6 +70,11 @@ const executionBoundarySchema = tool.schema.object({
   notes: tool.schema.string().describe("实施建议：关键坑位提醒、组件复用指引、设计约束边缘场景、框架应用说明（如 MapStruct 对象转换）；不含目录/包路径（见 allowed_directories/allowed_packages），无则留空"),
 })
 
+const boundaryExpansionSchema = tool.schema.object({
+  allowed_directories: tool.schema.array(tool.schema.string().min(1)).optional().describe("reviewer 声明的额外允许目录"),
+  allowed_packages: tool.schema.array(tool.schema.string().min(1)).optional().describe("reviewer 声明的额外允许包路径"),
+})
+
 const TEST_ISSUE_TYPES = ["断言放水", "边界缺失", "Mock过度", "覆盖不足", "其他"] as const
 
 const reviewIssue = tool.schema.object({
@@ -1816,6 +1821,25 @@ const toolIssueItem = tool.schema.object({
 })
 
 /** 确定性去重：dimension+file+line+description 全等匹配时跳过（仅与 open/submitted/rejected 状态比对） */
+function mergeExecutionBoundary(tg: TaskGroupState, expansion: { allowed_directories?: string[]; allowed_packages?: string[] }): void {
+  if (!tg.executionBoundary) return
+  const { allowed_directories, allowed_packages } = expansion
+  if (allowed_directories) {
+    for (const dir of allowed_directories) {
+      if (!tg.executionBoundary.allowed_directories.includes(dir)) {
+        tg.executionBoundary.allowed_directories.push(dir)
+      }
+    }
+  }
+  if (allowed_packages) {
+    for (const pkg of allowed_packages) {
+      if (!tg.executionBoundary.allowed_packages.includes(pkg)) {
+        tg.executionBoundary.allowed_packages.push(pkg)
+      }
+    }
+  }
+}
+
 function deduplicateAndAddIssues(
   issues: any[],
   existingIssues: IssueItem[],
@@ -1955,6 +1979,7 @@ export const tool_review_submit = tool({
     exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
     rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
     test_results: tool.schema.string().optional().describe("UT 运行结果摘要"),
+    boundary_expansion: boundaryExpansionSchema.optional().describe("执行边界扩展（仅 passed=false 时有效）"),
   },
   async execute(args, context) {
     assertAgent(context, "opx_tool_review_submit", ["openspec-reviewer-tool"])
@@ -2011,6 +2036,14 @@ export const tool_review_submit = tool({
         const entry = dir === "" || dir === "." ? iss.file : dir
         if (entry !== "." && entry !== "" && !dirs.includes(entry)) dirs.push(entry)
       }
+    }
+
+    // 合并执行边界（reviewer 显式声明扩展，仅 passed=false）
+    if (tg.executionBoundary && args.boundary_expansion) {
+      if (args.passed) {
+        throw new Error("passed=true 时不允许边界扩展。boundary_expansion 仅 passed=false 有效。")
+      }
+      mergeExecutionBoundary(tg, args.boundary_expansion)
     }
 
     tg.phases.review.tool.completed = true
@@ -2074,6 +2107,7 @@ export const task_review_submit = tool({
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
     exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
     rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
+    boundary_expansion: boundaryExpansionSchema.optional().describe("执行边界扩展（仅 passed=false 时有效）"),
   },
   async execute(args, context) {
     assertAgent(context, "opx_task_review_submit", ["openspec-reviewer-task"])
@@ -2133,6 +2167,7 @@ export const task_review_submit = tool({
     // 处理测试审查 issues
     const rawIssues = (args.issues || []) as any[]
     let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
+    const taskNewIssues: IssueItem[] = []
     for (const iss of rawIssues) {
       const dedupResult = deduplicateAndAddIssues(
         [iss], tg.issues,
@@ -2143,6 +2178,7 @@ export const task_review_submit = tool({
       if (dedupResult.dedupedCount > 0) continue
       if (dedupResult.newIssues.length > 0) {
         tg.issues.push(dedupResult.newIssues[0])
+        taskNewIssues.push(dedupResult.newIssues[0])
         nextIssueId = dedupResult.nextIssueId
       }
     }
@@ -2152,6 +2188,24 @@ export const task_review_submit = tool({
 
     // 统一 issue 裁定门禁（gate 先执行，消解活跃 issue）
     applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [])
+
+    // 合并执行边界（自动基于 issue file 目录扩展 + reviewer 显式声明扩展）
+    if (tg.executionBoundary) {
+      if (taskNewIssues.length > 0) {
+        const dirs = tg.executionBoundary.allowed_directories
+        for (const iss of taskNewIssues) {
+          const dir = path.dirname(iss.file)
+          const entry = dir === "" || dir === "." ? iss.file : dir
+          if (entry !== "." && entry !== "" && !dirs.includes(entry)) dirs.push(entry)
+        }
+      }
+      if (args.boundary_expansion) {
+        if (args.passed) {
+          throw new Error("passed=true 时不允许边界扩展。boundary_expansion 仅 passed=false 有效。")
+        }
+        mergeExecutionBoundary(tg, args.boundary_expansion)
+      }
+    }
 
     // passed 一致性校验（gate 之后，状态已确定）
     if (args.passed) {
@@ -2223,6 +2277,7 @@ export const quality_review_submit = tool({
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
     exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
     rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
+    boundary_expansion: boundaryExpansionSchema.optional().describe("执行边界扩展（仅 passed=false 时有效）"),
   },
   async execute(args, context) {
     const agentToDim = Object.fromEntries(
@@ -2290,6 +2345,14 @@ export const quality_review_submit = tool({
         const entry = dir === "" || dir === "." ? iss.file : dir
         if (entry !== "." && entry !== "" && !dirs.includes(entry)) dirs.push(entry)
       }
+    }
+
+    // 合并执行边界（reviewer 显式声明扩展，仅 passed=false）
+    if (tg.executionBoundary && args.boundary_expansion) {
+      if (args.passed) {
+        throw new Error("passed=true 时不允许边界扩展。boundary_expansion 仅 passed=false 有效。")
+      }
+      mergeExecutionBoundary(tg, args.boundary_expansion)
     }
 
     tg.phases.review.quality.progress[dimension] = { submitted: true, passed }

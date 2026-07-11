@@ -73,6 +73,7 @@ permission:
 4. AI 语义审查工具无法覆盖的性能维度问题（N+1 查询、反射拷贝、流式读取、事务一致性、外部调用超时等）
 5. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
 6. 汇总后调用 `opx_quality_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
+   `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
 ## 必读文档派生规则
 

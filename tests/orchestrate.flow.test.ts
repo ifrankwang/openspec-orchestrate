@@ -1469,3 +1469,303 @@ describe("16. line=0 + tool_eligible — 工具改进 issue 分离与边界扩�
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ═══════════════════════════════════════════════════
+//  Scenario 17: Boundary expansion
+// ═══════════════════════════════════════════════════
+
+describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
+
+  test("tool_review_submit boundary_expansion 扩目录", async () => {
+    const root = `/tmp/ft17a-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt)
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const s1 = readStateSync(wt, CID)
+    const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+    const s2 = readStateSync(wt, CID)
+    const tg = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    const res = JSON.parse(await tool_review_submit.execute({
+      task_group_id: "1", passed: false,
+      issues: [{ dimension: "style", severity: "Low", file: "src/app.ts", line: 5, description: "Bad", suggestion: "Fix" }],
+      fixed_issue_ids: [],
+      boundary_expansion: { allowed_directories: ["scripts"] },
+    }, toolR))
+    expect(res.status).toBe("rejected")
+
+    const state = readStateSync(wt, CID)
+    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.executionBoundary.allowed_directories).toContain("scripts")
+    expect(tg2.executionBoundary.allowed_directories).toContain("src")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("tool_review_submit boundary_expansion 扩包路径", async () => {
+    const root = `/tmp/ft17b-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt)
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const s1 = readStateSync(wt, CID)
+    const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+    const s2 = readStateSync(wt, CID)
+    const tg = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    const res = JSON.parse(await tool_review_submit.execute({
+      task_group_id: "1", passed: false,
+      issues: [{ dimension: "style", severity: "Low", file: "src/app.ts", line: 5, description: "Bad", suggestion: "Fix" }],
+      fixed_issue_ids: [],
+      boundary_expansion: { allowed_packages: ["com.new"] },
+    }, toolR))
+    expect(res.status).toBe("rejected")
+
+    const state = readStateSync(wt, CID)
+    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.executionBoundary.allowed_packages).toContain("com.new")
+    expect(tg2.executionBoundary.allowed_packages).toContain("com.t")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("tool_review_submit passed=true + boundary_expansion → 报错", async () => {
+    const root = `/tmp/ft17c-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt)
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const s1 = readStateSync(wt, CID)
+    const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+    const s2 = readStateSync(wt, CID)
+    const tg = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    await expect(tool_review_submit.execute({
+      task_group_id: "1", passed: true,
+      issues: [],
+      fixed_issue_ids: [],
+      boundary_expansion: { allowed_directories: ["extra"] },
+    }, toolR)).rejects.toThrow("passed=true 时不允许边界扩展")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("task_review_submit 自动扩目录", async () => {
+    const root = `/tmp/ft17d-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const s1 = readStateSync(wt, CID)
+    const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+    const s2 = readStateSync(wt, CID)
+    const tg = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    const res = JSON.parse(await task_review_submit.execute({
+      task_group_id: "1", passed: false,
+      verified_task_ids: ["1"], failed_task_ids: [{ task_id: "2", reason: "Not done" }],
+      fixed_issue_ids: [],
+      issues: [{ severity: "Low", file: "tests/test1.ts", line: 3, description: "Missing test", suggestion: "Add test" }],
+    }, taskR))
+    expect(res.status).toBe("rejected")
+
+    const state = readStateSync(wt, CID)
+    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.executionBoundary.allowed_directories).toContain("tests")
+    expect(tg2.executionBoundary.allowed_directories).toContain("src")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("task_review_submit boundary_expansion 扩目录", async () => {
+    const root = `/tmp/ft17e-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const s1 = readStateSync(wt, CID)
+    const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+    const s2 = readStateSync(wt, CID)
+    const tg = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    const res = JSON.parse(await task_review_submit.execute({
+      task_group_id: "1", passed: false,
+      verified_task_ids: ["1"], failed_task_ids: [{ task_id: "2", reason: "Not done" }],
+      fixed_issue_ids: [],
+      boundary_expansion: { allowed_directories: ["infra"] },
+    }, taskR))
+    expect(res.status).toBe("rejected")
+
+    const state = readStateSync(wt, CID)
+    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.executionBoundary.allowed_directories).toContain("infra")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("quality_review_submit boundary_expansion 扩目录", async () => {
+    const root = `/tmp/ft17f-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+    await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
+
+    const res = JSON.parse(await quality_review_submit.execute({
+      task_group_id: "1", passed: false,
+      issues: [{ severity: "Low", file: "src/app.ts", line: 5, description: "Bad", suggestion: "Fix it" }],
+      boundary_expansion: { allowed_directories: ["docs"] },
+    }, makeCtx("openspec-reviewer-style", wt)))
+    expect(res.status).toBe("partial")
+
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.executionBoundary.allowed_directories).toContain("docs")
+    expect(tg.executionBoundary.allowed_directories).toContain("src")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("quality_review_submit passed=true + boundary_expansion → 报错", async () => {
+    const root = `/tmp/ft17g-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+    await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
+
+    await expect(quality_review_submit.execute({
+      task_group_id: "1", passed: true,
+      issues: [],
+      boundary_expansion: { allowed_directories: ["extra"] },
+    }, makeCtx("openspec-reviewer-style", wt))).rejects.toThrow("passed=true 时不允许边界扩展")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("boundary_expansion 与自动 dirname 扩展并存叠加（目录去重）", async () => {
+    const root = `/tmp/ft17h-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt)
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const s1 = readStateSync(wt, CID)
+    const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+    const s2 = readStateSync(wt, CID)
+    const tg = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    const res = JSON.parse(await tool_review_submit.execute({
+      task_group_id: "1", passed: false,
+      issues: [{ dimension: "style", severity: "Low", file: "config/app.yml", line: 3, description: "YAML indent", suggestion: "Fix" }],
+      fixed_issue_ids: [],
+      boundary_expansion: { allowed_directories: ["scripts", "src"] },
+    }, toolR))
+    expect(res.status).toBe("rejected")
+
+    const state = readStateSync(wt, CID)
+    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.executionBoundary.allowed_directories).toContain("config")
+    expect(tg2.executionBoundary.allowed_directories).toContain("scripts")
+    const srcCount = tg2.executionBoundary.allowed_directories.filter((d: string) => d === "src").length
+    expect(srcCount).toBe(1)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})

@@ -118,6 +118,7 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 2. 审查本维度存量 open issue 和豁免申请——对豁免申请裁定 grant / reject（驳回须填原因）；对常规 issue 验证 developer 是否已修复
 3. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
 4. 汇总后调用 `opx_task_review_submit(passed, issues, verified_task_ids, failed_task_ids, test_results, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
+   `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
 ## 必读文档派生规则
 

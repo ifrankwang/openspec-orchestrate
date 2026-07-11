@@ -81,7 +81,7 @@ permission:
 ### 第四步：汇总与提交
 
 1. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。
-2. 汇总后调用 `opx_tool_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?)` 提交
+2. 汇总后调用 `opx_tool_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
 
 ## 输出格式
 
@@ -110,7 +110,8 @@ permission:
     }
   ],
   "fixed_issue_ids": ["15", "22"],
-  "exempt_issue_ids": ["18"]
+  "exempt_issue_ids": ["18"],
+  "rejected_issue_ids": [{ "issue_id": "25", "reason": "不符合豁免条件" }]
 }
 ```
 
@@ -118,6 +119,7 @@ permission:
 - `dimension`（issue 内）：英文枚举 `style` / `architecture` / `performance` / `security` / `maintainability`
 - `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
 - `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
+- `rejected_issue_ids`：(可选) 驳回的豁免申请列表，每条含 `issue_id` 和 `reason`
 
 ## 工具调用边界
 

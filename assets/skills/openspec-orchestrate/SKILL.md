@@ -42,7 +42,7 @@ description: OpenSpec 任务组编排工作流。四阶段顺次执行 + Review 
 | `opx_status` | 只读状态/上下文查询。按 `context.agent` 角色路由返回对应上下文。对非编排者角色执行阶段门禁检查，未轮到执行的角色会收到 ⛔ 拒绝消息。 |
 | `opx_tool_review_submit` | **tool review**：跨维 tool issues + UT 结果 + 修复确认 + 豁免裁定。仅 openspec-reviewer-tool 调用。 |
 | `opx_task_review_submit` | **task review**：task verified/rejected + 服务/接口验收 + 测试审查。仅 openspec-reviewer-task 调用。 |
-| `opx_quality_review_submit` | **quality review**：维度按调用者身份自动推导。仅 5 维 quality reviewer 调用。 |
+| `opx_quality_review_submit` | **quality review**：维度按调用者身份自动推导。支持 exempt_issue_ids（豁免裁定）和 rejected_issue_ids（驳回含原因）。仅 5 维 quality reviewer 调用。 |
 | `opx_arch_submit` | 架构师提交复核结果。passed=true/false + 执行边界 + issue 清单。仅 openspec-architect 调用。 |
 | `opx_dev_submit` | developer 提交实现结果。task 提交 / issue 修复 / 豁免申请。仅 openspec-developer 调用。 |
 

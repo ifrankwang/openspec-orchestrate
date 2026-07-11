@@ -78,7 +78,7 @@ async function setupThroughQualityReady(
   }
   if (!tg.phases.review.task.completed) {
     await task_review_submit.execute({
-      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [],
       fixed_issue_ids: [],
     }, ctx.taskReviewer)
   }
@@ -108,9 +108,8 @@ async function transitionToReview(
   }
   if (!tg2.phases.review.task.completed) {
     await task_review_submit.execute({
-      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [],
       fixed_issue_ids: [],
-      exempt_issue_ids: exemptIds || [],
     }, taskReviewer)
   }
 }
@@ -193,7 +192,7 @@ describe("1. Happy Path — 完整流程", () => {
     expect(rr1.phase).toBe("review(tool=completed)")
 
     const rr2 = JSON.parse(await task_review_submit.execute({
-      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [],
       fixed_issue_ids: [],
     }, taskR))
     expect(rr2.status).toBe("ok")
@@ -670,7 +669,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
     await task_review_submit.execute({
-      task_group_id: "1",
+      task_group_id: "1", passed: false,
       verified_task_ids: ["2"], failed_task_ids: [{ task_id: "1", reason: "Incomplete" }],
       issues: [{ severity: "Info", file: "src/F1.java", line: 5, description: "Exceeds 80 col", suggestion: "Wrap" }],
       fixed_issue_ids: [],
@@ -739,7 +738,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
     await task_review_submit.execute({
-      task_group_id: "1",
+      task_group_id: "1", passed: false,
       verified_task_ids: ["2"], failed_task_ids: [{ task_id: "1", reason: "Incomplete" }],
       issues: [{ severity: "Info", file: "src/F1.java", line: 5, description: "Exceeds 80 col", suggestion: "Wrap" }],
       fixed_issue_ids: [],
@@ -771,10 +770,10 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     }, o)
     await tool_review_submit.execute({
       task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [],
-      reject_exempt_issue_ids: [issueId],
+      rejected_issue_ids: [{issue_id: issueId, reason: "Testing rejection reason"}],
     }, toolR)
     await task_review_submit.execute({
-      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [],
       fixed_issue_ids: [],
     }, taskR)
 
@@ -1099,7 +1098,7 @@ describe("13. 去阶段化 — dev 在 dev_impl 状态下可见 review issue", (
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-    await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
     // --- 2. Quality review fails with issues (5 维全提交，仅 style 失败) ---
     const dims = ["style", "architecture", "performance", "security", "maintainability"]
@@ -1189,7 +1188,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-    await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
     const dims = ["style", "architecture", "performance", "security", "maintainability"]
     const issueArgs: any = { task_group_id: "1", passed: true, issues: [] }
@@ -1222,7 +1221,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
 
     // --- 5. Task review with no verified/failed tasks → auto-skip ---
     const result = JSON.parse(await task_review_submit.execute({
-      task_group_id: "1",
+      task_group_id: "1", passed: true,
       // No verified_task_ids or failed_task_ids — all tasks already verified
     }, taskR))
     expect(result.status).toBe("ok")

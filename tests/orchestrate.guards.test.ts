@@ -61,7 +61,7 @@ async function setupToReview(wt: string, fakeGit: FakeGitRunner) {
     recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
   }, o)
   await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-  await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+  await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 }
 
 // ── G1: set_worktree before arch_submit ──
@@ -120,7 +120,7 @@ describe("G2. 身份守卫", () => {
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-    await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
     await expect(
       quality_review_submit.execute({ task_group_id: "1", passed: true, issues: [] }, a)
@@ -161,7 +161,7 @@ describe("G3. 重复提交守卫", () => {
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-    await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
     await quality_review_submit.execute({ task_group_id: "1", passed: true, issues: [] }, s)
     await expect(
@@ -228,7 +228,7 @@ describe("G5. 非法 task id 守卫", () => {
 
     await expect(
       task_review_submit.execute({
-        task_group_id: "1",
+        task_group_id: "1", passed: true,
         verified_task_ids: ["99"], failed_task_ids: [],
         fixed_issue_ids: [],
       }, taskR)
@@ -271,7 +271,7 @@ describe("G6. task_review_submit 完整性门禁", () => {
 
     await expect(
       task_review_submit.execute({
-        task_group_id: "1",
+        task_group_id: "1", passed: true,
         verified_task_ids: [], failed_task_ids: [],
         fixed_issue_ids: [],
       }, taskR)
@@ -314,7 +314,7 @@ describe("G7. 非法 task id in failed_task_ids", () => {
 
     await expect(
       task_review_submit.execute({
-        task_group_id: "1",
+        task_group_id: "1", passed: false,
         verified_task_ids: ["1"], failed_task_ids: [{ task_id: "999", reason: "Invalid" }],
         fixed_issue_ids: [],
       }, taskR)
@@ -355,7 +355,7 @@ describe("G8. tool 层完成守卫", () => {
 
     await expect(
       task_review_submit.execute({
-        task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+        task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [],
         fixed_issue_ids: [],
       }, taskR)
     ).rejects.toThrow(/tool 层审核未完成/)
@@ -445,7 +445,7 @@ describe("G10. 重复操作守卫", () => {
       exempt_issue_ids: [issueId],
     }, toolR)
     await task_review_submit.execute({
-      task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [],
+      task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [],
       fixed_issue_ids: [],
     }, taskR)
 
@@ -620,9 +620,9 @@ describe("G14. task 层重复提交守卫", () => {
     }, o)
 
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-    await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
     await expect(
-      task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+      task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
     ).rejects.toThrow(/不允许重复提交/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
@@ -632,7 +632,7 @@ describe("G14. task 层重复提交守卫", () => {
 // ── G15: 豁免完整性门禁 ──
 
 describe("G15. 豁免完整性门禁", () => {
-  test("存在 exemption 但未传入 exempt_issue_ids 或 reject_exempt_issue_ids → throws", async () => {
+  test("存在 exemption 但未传入 exempt_issue_ids 或 rejected_issue_ids → throws", async () => {
     const root = `/tmp/guard-g15-${Date.now()}`
     const wt = setupWt(root, join(root, "w"))
     const fakeGit = new FakeGitRunner()
@@ -658,7 +658,7 @@ describe("G15. 豁免完整性门禁", () => {
       recovery: { phase: "review", worktree_path: tg1.worktreePath, branch_name: tg1.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-    await task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
     const dims = ["style", "architecture", "performance", "security", "maintainability"]
     for (let i = 0; i < dims.length; i++) {
@@ -689,7 +689,7 @@ describe("G15. 豁免完整性门禁", () => {
 
     await expect(
       tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
-    ).rejects.toThrow(/豁免完整性门禁不通过/)
+    ).rejects.toThrow(/未被 fixed_issue_ids、exempt_issue_ids 或 rejected_issue_ids 覆盖/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -736,7 +736,7 @@ describe("G16. 层失败回退 dev_impl", () => {
     expect(tg2.phases.review.tool.retryCount).toBe(1)
 
     await expect(
-      task_review_submit.execute({ task_group_id: "1", verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+      task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
     ).rejects.toThrow(/需在 review 阶段调用/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
@@ -772,7 +772,7 @@ describe("G16. 层失败回退 dev_impl", () => {
 
     // task fails — rely on state assertions for type safety
     const toolOut = await task_review_submit.execute({
-      task_group_id: "1",
+      task_group_id: "1", passed: false,
       verified_task_ids: ["1"], failed_task_ids: [{ task_id: "2", reason: "Incomplete" }],
       fixed_issue_ids: [],
     }, taskR)
@@ -826,7 +826,7 @@ describe("G17. rejectReason 存储", () => {
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
 
     await task_review_submit.execute({
-      task_group_id: "1",
+      task_group_id: "1", passed: false,
       verified_task_ids: ["1"], failed_task_ids: [{ task_id: "2", reason: "Output file not found at expected path" }],
       fixed_issue_ids: [],
     }, taskR)

@@ -1885,6 +1885,13 @@ function applyReviewGate(
     if (rejectedSet.has(id)) throw new Error(`issue #${id} 同时出现在 exempt_issue_ids 和 rejected_issue_ids 中。`)
   }
 
+  // 单列表重复校验
+  const seenInRejected = new Set<string>()
+  for (const r of rejectedIssueInputs) {
+    if (seenInRejected.has(r.issue_id)) throw new Error(`rejected_issue_ids 中存在重复的 issue ID：${r.issue_id}。`)
+    seenInRejected.add(r.issue_id)
+  }
+
   // 异常校验：状态与列表不匹配
   for (const id of fixedIds) {
     const issue = issues.find((i) => i.id === id)
@@ -2139,7 +2146,13 @@ export const task_review_submit = tool({
       }
     }
 
-    // passed 一致性校验
+    // 检查新报 issues（对齐 tool/quality 行为）
+    assertPassWithIssues(args.passed, args.issues || [], "opx_task_review_submit")
+
+    // 统一 issue 裁定门禁（gate 先执行，消解活跃 issue）
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [])
+
+    // passed 一致性校验（gate 之后，状态已确定）
     if (args.passed) {
       if (failed.length > 0) {
         throw new Error(`任务层审核声称 passed=true，但存在 ${failed.length} 个未通过的 task。`)
@@ -2148,9 +2161,6 @@ export const task_review_submit = tool({
         throw new Error(`任务层审核声称 passed=true，但存在阻塞 issue。`)
       }
     }
-
-    // 统一 issue 裁定门禁
-    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [])
 
     tg.phases.review.task.completed = true
     await writeState(context.worktree, state)

@@ -65,11 +65,11 @@ permission:
 1. 调用 `opx_status` 获取 worktree 路径、diff 范围、本维度存量 issue 与豁免申请
 2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
 3. 审查本维度存量 open issue 和豁免申请：
-   - 对豁免申请裁定 grant / reject
+   - 对豁免申请裁定 grant / reject（驳回须填原因）
    - 对常规 issue 验证 developer 是否已修复
 4. AI 语义审查工具无法覆盖的架构维度问题（DDD 语义正确性、Port/Adapter、实体封装合理性等）
 5. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
-6. 汇总后调用 `opx_quality_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?)` 提交
+6. 汇总后调用 `opx_quality_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
 
 ## 必读文档派生规则
 
@@ -99,13 +99,15 @@ permission:
     }
   ],
   "fixed_issue_ids": ["15", "22"],
-  "exempt_issue_ids": ["18", "25"]
+  "exempt_issue_ids": ["18", "25"],
+  "rejected_issue_ids": [{"issue_id": "18", "reason": "不符合豁免条件"}]
 }
 ```
 
 - `dimension`（issue 内）：英文枚举 `architecture`
 - `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
 - `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
+- `rejected_issue_ids`：可选：驳回的 issue 列表（含驳回原因），格式 `[{"issue_id": "18", "reason": "不符合豁免条件"}]`
 
 ## 已知问题
 

@@ -111,9 +111,9 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 ### 第四步：审核汇总
 
 1. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
-2. 审查本维度存量 open issue 和豁免申请——对豁免申请裁定 grant / reject；对常规 issue 验证 developer 是否已修复
+2. 审查本维度存量 open issue 和豁免申请——对豁免申请裁定 grant / reject（驳回须填原因）；对常规 issue 验证 developer 是否已修复
 3. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
-4. 汇总后调用 `opx_task_review_submit(passed, issues, verified_task_ids, failed_task_ids, test_results, fixed_issue_ids?, exempt_issue_ids?)` 提交
+4. 汇总后调用 `opx_task_review_submit(passed, issues, verified_task_ids, failed_task_ids, test_results, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
 
 ## 必读文档派生规则
 
@@ -147,7 +147,8 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
   ],
   "test_results": "TEST RESULTS: 42/42 passed, 0 failed",
   "fixed_issue_ids": ["15", "22"],
-  "exempt_issue_ids": ["18", "25"]
+  "exempt_issue_ids": ["18"],
+  "rejected_issue_ids": [{ "issue_id": "25", "reason": "不属于本维度管辖范围" }]
 }
 ```
 
@@ -155,7 +156,9 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 - `verified_task_ids`：产出完整的 task ID 列表
 - `failed_task_ids`：产出不完整的 task 列表（含原因）
 - `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
+- `passed`：是否通过本次 task review
 - `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
+- `rejected_issue_ids`：(可选) 驳回的豁免申请列表，每条含 `issue_id` 和 `reason`
 
 ## 工具调用边界
 

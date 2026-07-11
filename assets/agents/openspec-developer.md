@@ -85,8 +85,8 @@ permission:
 2. 修复完成后 **先 commit**，再调 `opx_dev_submit(fixed_issue_ids=...)`
 3. 对不可修的 issue 调用 `opx_dev_submit(request_exempts=[...])` 申请豁免，交对应维度 reviewer 裁定
 4. 修复范围自动覆盖被标记文件：reviewer 报 issue 时，工具已把 issue 指向文件的目录并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停
-5. 若 issue 的 `suggestion` 中包含 `[tool_eligible]` 标记和具体的规则草案，按草案实施工具配置变更
-6. 修复可按 issue 中的 `suggestion` 直接执行（reviewer 已在 issue 中写好了具体规则草案）
+5. 工具改进 issue（`suggestion` 含 `[tool_eligible]`）的 `file` 已指向规则/配置文件，其目录已由工具并入执行边界。按 `suggestion` 中草案直接改该配置文件即可，不越界、无需暂停
+6. 修复可按 issue 中的 `suggestion` 直接执行（reviewer 已在 issue 中写好了具体修复）
 
 ## 代码规范
 

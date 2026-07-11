@@ -1334,3 +1334,145 @@ describe("15. base_branch 自动推导与异常", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ═══════════════════════════════════════════════════
+//  Scenario 16: line=0 + tool_eligible 边界扩展
+// ═══════════════════════════════════════════════════
+
+describe("16. line=0 + tool_eligible — 工具改进 issue 分离与边界扩展", () => {
+
+  test("quality_review_submit 接受 line=0（工具改进 issue 指向配置文件）", async () => {
+    const root = `/tmp/ft16a-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+    await setupThroughQualityReady(wt, fakeGit, { orch: o, arch: a, dev: d, toolReviewer: toolR, taskReviewer: taskR })
+
+    // 提交含 line=0 的 issue（工具改进 issue：file 指向配置文件，Info 可伴随 passed=true）
+    const res = JSON.parse(await quality_review_submit.execute({
+      task_group_id: "1", passed: true,
+      issues: [{
+        severity: "Info",
+        file: "pmd-rules.xml",
+        line: 0,
+        description: "Domain 层异常命名应被 PMD 拦截",
+        suggestion: "新增 XPath 规则 [tool_eligible]",
+      }],
+    }, makeCtx("openspec-reviewer-style", wt)))
+    expect(res.status).toBe("partial")
+
+    // line=0 存入 state 无误
+    const state = readStateSync(wt, CID)
+    const issue = state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.file === "pmd-rules.xml")
+    expect(issue).toBeDefined()
+    expect(issue.line).toBe(0)
+
+    // pmd-rules.xml（根文件）并入 executionBoundary
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.executionBoundary.allowed_directories).toContain("pmd-rules.xml")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("tool_review_submit 接受 line=0（Info 可伴随 passed=true）", async () => {
+    const root = `/tmp/ft16b-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt)
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    const s1 = readStateSync(wt, CID)
+    const devWt = s1.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+    const s2 = readStateSync(wt, CID)
+    const tg = s2.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    // tool review 提交 line=0 Info issue
+    const res = JSON.parse(await tool_review_submit.execute({
+      task_group_id: "1", passed: true,
+      issues: [{ dimension: "style", severity: "Info", file: ".editorconfig", line: 0, description: "Indent 2", suggestion: "Set indent_style=space" }],
+      fixed_issue_ids: [],
+    }, toolR))
+    expect(res.status).toBe("ok")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("line=0 在 developer opx_status 显示中省略 :0", async () => {
+    const root = `/tmp/ft16c-${Date.now()}`
+    const wt = (() => {
+      const dir = root
+      const w = root + "/w"
+      mkdirSync(join(w, "openspec", "changes", CID), { recursive: true })
+      writeFileSync(join(w, "openspec", "changes", CID, "tasks.md"),
+        "## 1. G1\n\n- [ ] 1.1 T1 [spec:s1]\n- [ ] 1.2 T2 [spec:s2]\n", "utf-8")
+      return w
+    })()
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    let state = readStateSync(wt, CID)
+    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+
+    // Transition to review
+    state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, current_task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+
+    // Quality 5 维全提交，仅 style 携带 line=0 issue 且 passed=false
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
+    for (let i = 0; i < dims.length; i++) {
+      const args: any = { task_group_id: "1", passed: true, issues: [] }
+      if (i === 0) {
+        args.passed = false
+        args.issues = [{ severity: "Low", file: "pmd-rules.xml", line: 0, description: "Add XPath rule", suggestion: "XPath rule [tool_eligible]" }]
+      }
+      await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt))
+    }
+
+    // quality failed → 自动回 dev_impl
+    state = readStateSync(wt, CID)
+    expect(state.taskGroups.find((g: any) => g.id === "1").status).toBe("dev_impl")
+
+    // developer 调 status → 看到 line=0 issue 无 :0
+    const viewText = await status.execute({}, makeCtx("openspec-developer", wt))
+    expect(viewText).toContain("pmd-rules.xml")
+    expect(viewText).not.toContain("pmd-rules.xml:0")
+    expect(viewText).toContain("Add XPath rule")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})

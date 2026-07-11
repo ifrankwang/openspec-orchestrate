@@ -36,7 +36,7 @@ permission:
    - 项目级 skill 仅在场景匹配时加载（如 Java 项目不加载前端 skill）
    - 选择与当前执行目标（开发/审查/验证）匹配的 skill
 5. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在报告中标注"未加载匹配的技术栈 skill"
-6. 当审查中发现可工具化的 pattern 问题时，加载项目中的工具规则改进 skill，按其中模板编写具体的规则草案，写入 issue 的 `suggestion` 字段
+6. 当审查中发现可工具化的 pattern 问题时，报两条分离 issue：业务 issue（`file`=违规代码，指向现场）+ 工具改进 issue（`file`=规则/配置文件，`line=0` 若待新建，`suggestion` 含规则草案 + 验证命令，末尾标 `[tool_eligible]`）。按项目级工具规则改进 skill 中的模板编写规则草案
 
 ## 严重级别
 

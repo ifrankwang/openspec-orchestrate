@@ -160,6 +160,7 @@ interface DevPhaseData {
 interface ReviewPhaseData {
   completed: boolean
   retryCount: number
+  lastResolvedRetryCount: number
   qualityBaselineDone: boolean
   tool: ReviewLayerData
   task: ReviewLayerData
@@ -210,6 +211,7 @@ function createEmptyPhases(): Phases {
     review: {
       completed: false,
       retryCount: 0,
+      lastResolvedRetryCount: 0,
       qualityBaselineDone: false,
       tool: { completed: false },
       task: { completed: false },
@@ -772,9 +774,13 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   }
     // 规则 5：检查点待决策态
   if (tg.status === "review") {
-    if (tg.phases.review.retryCount > 0 && tg.phases.review.retryCount % MAX_RETRIES === 0) {
-      checks.push(`- ℹ️ 审查重试达到检查点（retryCount=${tg.phases.review.retryCount}），处于待用户决策态。`)
+    const atCheckpoint = tg.phases.review.retryCount > 0 && tg.phases.review.retryCount % MAX_RETRIES === 0
+    const alreadyResolved = tg.phases.review.retryCount === tg.phases.review.lastResolvedRetryCount
+    if (atCheckpoint && !alreadyResolved) {
+      checks.push(`- ⛔ 审查重试达到检查点（第 ${tg.phases.review.retryCount} 轮），需要用户决策。`)
       checks.push(`  唯一动作：调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`)
+    } else if (atCheckpoint && alreadyResolved) {
+      checks.push(`- ✅ 检查点已处理（第 ${tg.phases.review.retryCount} 轮后继续），审查正常推进中。`)
     }
   }
   if (checks.length > 0) {
@@ -793,7 +799,10 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   } else if (tg.phases.review.completed) {
     lines.push("所有审核层已完成，调用 `opx_orch_complete_task_group` 收尾。")
   } else if (tg.status === "review") {
-    if (tg.phases.review.retryCount > 0 && tg.phases.review.retryCount % MAX_RETRIES === 0) {
+    const needsDecision = tg.phases.review.retryCount > 0
+      && tg.phases.review.retryCount % MAX_RETRIES === 0
+      && tg.phases.review.retryCount !== tg.phases.review.lastResolvedRetryCount
+    if (needsDecision) {
       lines.push("审查重试达到检查点（retryCount=" + tg.phases.review.retryCount + "），需要用户决策。")
       lines.push("请调用 `opx_orch_resolve_review` 推进（continue：继续修 / giveup：放弃合并）。")
     } else {
@@ -2552,7 +2561,7 @@ async function finalizeQualityPhase(
 export const resolve_review = tool({
   description:
     "编排者在 review 阶段重试超上限（needs_user_decision）后，据用户决策推进：\n" +
-    "- decision=continue：重置审查进度及 retryCount，回到 tool→task→quality 全流程基线\n" +
+    "- decision=continue：重置审查进度，切换到 dev_impl 阶段，developer 重新提交后回到 tool→task→quality 全流程基线\n" +
     "- decision=giveup：将剩余 Low+ open/rejected 及待裁定 exemption 置 exempted，标记 review 完成",
   args: {
     task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
@@ -2580,6 +2589,7 @@ export const resolve_review = tool({
     }
 
     if (args.decision === "continue") {
+      tg.phases.review.lastResolvedRetryCount = tg.phases.review.retryCount
       tg.phases.review.tool.completed = false
       tg.phases.review.task.completed = false
       tg.phases.review.quality.completed = false

@@ -16,7 +16,7 @@ OpenCode 编排插件，实现 OpenSpec 四阶段工作流 + Review 三层门禁
 
 `task_analysis → dev_impl → review → completed`
 
-多 task group 顺序执行，完成后自动推进到下一个未开始组。
+
 
 ### Review 三层门禁
 

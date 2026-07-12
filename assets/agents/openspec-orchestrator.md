@@ -37,7 +37,7 @@ permission:
 | `opx_orch_init` | 初始化编排会话。工具自行解析 tasks.md，仅重建当前组，其余组原样保留。支持 recovery 参数恢复进度。 |
 | `opx_orch_set_worktree` | 确保 worktree 就绪。参数可选，自动按规范创建/复用。 |
 | `opx_orch_resolve_review` | review 重试达到检查点（每 %3 轮，needs_user_decision）后据用户决策推进：continue 继续审查（retryCount 保留不清零）；giveup 豁免剩余 Low+ 后标记 review 完成。 |
-| `opx_orch_complete_task_group` | 任务组收尾：自动合并 task-group 分支到 baseBranch + 清理 worktree/分支 + 推进阶段 |
+| `opx_orch_complete_task_group` | 任务组收尾：自动合并 task-group 分支到 baseBranch + 清理 worktree/分支 |
 
 编排者与所有子 agent 共用：`opx_status`（只读，按 `context.agent` 路由返回）。
 
@@ -68,12 +68,12 @@ permission:
 
 ```json
 // 全新开始：
-{ "change_id": "<变更名称>", "current_task_group_id": "3" }
+{ "change_id": "<变更名称>", "task_group_id": "3" }
 
 // 恢复进度：
 {
   "change_id": "<变更名称>",
-  "current_task_group_id": "3",
+  "task_group_id": "3",
   "recovery": { "phase": "review", "worktree_path": "/path/to/.worktree/task-group-3", "branch_name": "task-group/3", "preserve_progress": true }
 }
 ```

@@ -193,7 +193,7 @@ interface TaskGroupState {
 
 interface OrchestrateState {
   changeId: string
-  currentTaskGroupId: string
+  taskGroupId: string
   baseBranch: string
   taskGroups: TaskGroupState[]
   createdAt: string
@@ -657,7 +657,6 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   const lines: string[] = []
   lines.push("# 编排进度", "")
   lines.push(`**变更**: ${state.changeId}`)
-  lines.push(`**任务组**: ${tg.id} — ${tg.name}`)
   lines.push(`**基准分支**: ${state.baseBranch}`)
   lines.push(`**当前阶段**: ${tg.status}`, "")
   lines.push("## 阶段进展", "")
@@ -719,7 +718,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
     for (const w of diskWorktrees) {
       const registered = stateBranches.has(w.branch)
       const existingTg = state.taskGroups.find((g) => g.branchName === w.branch)
-      const derivedStatus = existingTg ? deriveStatus(existingTg, state.currentTaskGroupId) : "completed"
+      const derivedStatus = existingTg ? deriveStatus(existingTg, state.taskGroupId) : "completed"
       const status = registered ? `已注册 (TG${existingTg?.id}, ${derivedStatus})` : "未注册（可恢复进度）"
       lines.push(`| ${w.branch} | \`${w.path}\` | ${status} |`)
     }
@@ -788,7 +787,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   if (checks.length > 0) {
     lines.push("以上状态异常，请按 recovery 建议修复。")
   } else if (tg.status === "completed") {
-    lines.push("本次任务组已全部完成。")
+    lines.push("编排已完成。")
   } else if (tg.phases.review.completed) {
     lines.push("所有审核层已完成，调用 `opx_orch_complete_task_group` 收尾。")
   } else if (tg.status === "review") {
@@ -841,7 +840,6 @@ function renderArchitectView(state: OrchestrateState, tg: TaskGroupState): strin
   const lines: string[] = []
   lines.push("# 架构师上下文", "")
   lines.push(`**变更**: ${state.changeId}`)
-  lines.push(`**任务组**: ${tg.id} — ${tg.name}`)
   const arcReviewLayer = tg.status === "review"
     ? tg.phases.review.tool.completed
       ? tg.phases.review.task.completed
@@ -879,7 +877,6 @@ function renderArchitectView(state: OrchestrateState, tg: TaskGroupState): strin
 function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState): string {
   const lines: string[] = []
   lines.push("# 开发上下文", "")
-  lines.push(`任务组: ${tg.id} — ${tg.name}`)
   lines.push(`当前阶段: ${tg.status}`, "")
   lines.push("## Worktree", "")
   if (tg.worktreePath) {
@@ -967,7 +964,6 @@ function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState): strin
 function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): string {
   const lines: string[] = []
   lines.push("# 工具审核上下文", "")
-  lines.push(`**任务组**: ${tg.id} — ${tg.name}`, "")
   lines.push("## Worktree", "")
   if (tg.worktreePath) {
     lines.push(`- **路径**: \`${tg.worktreePath}\``)
@@ -1000,7 +996,6 @@ function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): stri
 function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState): string {
   const lines: string[] = []
   lines.push("# 任务审核上下文", "")
-  lines.push(`**任务组**: ${tg.id} — ${tg.name}`, "")
   lines.push(`**tool 层**: ${tg.phases.review.tool.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
   lines.push("## Worktree", "")
   if (tg.worktreePath) {
@@ -1043,7 +1038,6 @@ function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupState, ag
   const dimension = (Object.keys(DIMENSION_AGENT_MAP) as Dimension[]).find((d) => DIMENSION_AGENT_MAP[d] === agent) || ""
   const lines: string[] = []
   lines.push(`# AI 审查上下文 — ${dimension}`, "")
-  lines.push(`**任务组**: ${tg.id} — ${tg.name}`, "")
   lines.push(`**task 层**: ${tg.phases.review.task.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
   lines.push("## Worktree", "")
   if (tg.worktreePath) {
@@ -1109,10 +1103,10 @@ const PHASE_ORDER: Phase[] = ["task_analysis", "dev_impl", "review"]
 
 export const init = tool({
   description:
-    "初始化编排会话。传入变更 ID 和当前任务组 ID，工具自动解析 tasks.md 提取全部任务组并解析当前组子任务。可通过 recovery 参数恢复到指定阶段。同 changeId 可重复调用，仅重建当前组，其余组原样保留。",
+    "初始化编排会话。传入变更 ID 和任务组 ID，工具自动解析 tasks.md 提取全部任务组并解析目标组子任务。可通过 recovery 参数恢复到指定阶段。同 changeId 可重复调用，仅重建目标组，其余组原样保留。",
   args: {
     change_id: tool.schema.string().min(1).describe("OpenSpec 变更 ID"),
-    current_task_group_id: tool.schema.string().min(1).describe("当前要初始化的任务组 ID。仅此组被重建（in_progress），其余组原样保留。首次初始化时当前组之前的组为 not_started。"),
+    task_group_id: tool.schema.string().min(1).describe("要初始化的任务组 ID。仅此组被重建（in_progress），其余组原样保留。"),
     base_branch: tool.schema.string().optional().describe("基准分支名（如 main、develop），用于计算 merge-base 和 worktree fork 源。未传则自动从当前 git 分支推导。"),
     recovery: tool.schema.object({
       phase: tool.schema.enum(PHASE_ORDER).describe("恢复到哪个阶段"),
@@ -1143,13 +1137,13 @@ export const init = tool({
     if (parsedGroups.length === 0) {
       throw new Error(`无法从 tasks.md 解析出任务组，请检查文件 openspec/changes/${args.change_id}/tasks.md。`)
     }
-    const targetGroup = parsedGroups.find((g) => g.id === args.current_task_group_id)
+    const targetGroup = parsedGroups.find((g) => g.id === args.task_group_id)
     if (!targetGroup) {
-      throw new Error(`current_task_group_id "${args.current_task_group_id}" 不在 tasks.md 中。可用 ID: [${parsedGroups.map((g) => g.id).join(", ")}]。`)
+      throw new Error(`task_group_id "${args.task_group_id}" 不在 tasks.md 中。可用 ID: [${parsedGroups.map((g) => g.id).join(", ")}]。`)
     }
 
     // 解析当前任务组的子任务
-    const parsedTasks = await parseTasksMdForGroup(context.worktree, args.change_id, args.current_task_group_id)
+    const parsedTasks = await parseTasksMdForGroup(context.worktree, args.change_id, args.task_group_id)
     const relevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
     const newTasks: TaskItem[] = parsedTasks.map((p, i) => ({
       id: String(i + 1),
@@ -1202,7 +1196,7 @@ export const init = tool({
       state.taskGroups = parsedGroups.map((p) => {
         const existing = existingMap.get(p.id)
 
-        if (p.id !== args.current_task_group_id) {
+        if (p.id !== args.task_group_id) {
           // Non-current group: preserve existing, or add new as not_started
           if (existing) {
             return { ...existing, name: p.name, taskCount: p.taskCount }
@@ -1289,14 +1283,14 @@ export const init = tool({
 
         return base
       })
-      state.currentTaskGroupId = args.current_task_group_id
+      state.taskGroupId = args.task_group_id
     } else {
       state = {
         changeId: args.change_id,
-        currentTaskGroupId: args.current_task_group_id,
+        taskGroupId: args.task_group_id,
         baseBranch,
         taskGroups: parsedGroups.map((p) => {
-          const isCurrent = p.id === args.current_task_group_id
+          const isCurrent = p.id === args.task_group_id
           const defaultPhase = args.recovery ? args.recovery.phase : "task_analysis"
           const { phases, status } = isCurrent
             ? buildPhases(args.recovery ? (args.recovery.phase as BuildPhaseTarget) : "task_analysis", args.recovery?.review_layer)
@@ -1321,7 +1315,7 @@ export const init = tool({
     }
 
     // recovery 写入 worktree 信息 + baseRef + diff
-    const ctg = findTaskGroup(state, args.current_task_group_id)
+    const ctg = findTaskGroup(state, args.task_group_id)
     if (args.recovery) {
       ctg.worktreePath = args.recovery.worktree_path
       ctg.branchName = args.recovery.branch_name
@@ -1375,7 +1369,7 @@ export const init = tool({
         current_task_group: targetGroup,
         active_phase: defaultPhase,
         task_count: newTasks.length,
-        message: `编排会话已初始化。仅初始化 TG${args.current_task_group_id}，其余任务组未改动。${recoveryMsg}${nextStep}`,
+        message: `编排会话已初始化。${recoveryMsg}${nextStep}`,
       },
       null,
       2
@@ -1389,7 +1383,7 @@ export const init = tool({
 
 export const set_worktree = tool({
   description:
-    "确保当前任务组的 git worktree 就绪。若已存在则复用，否则按规范自动创建（分支 task-group/{id}，路径 .worktree/task-group-{id}）。架构师复核通过后调用。进入开发阶段时自动按最终 tasks.md 刷新当前组任务列表；恢复场景仅补齐 worktree、不改阶段。",
+    "确保目标组的 git worktree 就绪。若已存在则复用，否则按规范自动创建（分支 task-group/{id}，路径 .worktree/task-group-{id}）。架构师复核通过后调用。进入开发阶段时自动按最终 tasks.md 刷新当前组任务列表；恢复场景仅补齐 worktree、不改阶段。",
   args: {
     worktree_path: tool.schema.string().optional().describe("git worktree 的绝对路径（可选，不传则按规范自动生成）"),
     branch_name: tool.schema.string().optional().describe("worktree 对应的分支名（可选，不传则按规范 task-group/{id}）"),
@@ -1398,14 +1392,14 @@ export const set_worktree = tool({
     assertOrchestrator(context, "opx_orch_set_worktree")
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    const tg = findTaskGroup(state, state.currentTaskGroupId)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (!tg.phases.architect_review.completed) {
       throw new Error(`阶段顺序错误：opx_orch_set_worktree 需在 architect_review 完成后调用，当前 architect_review 阶段状态为 "uncompleted"。`)
     }
 
     const repoRoot = context.worktree
-    const branch = args.branch_name || `task-group/${state.currentTaskGroupId}`
-    const wtPath = args.worktree_path || path.join(repoRoot, ".worktree", `task-group-${state.currentTaskGroupId}`)
+    const branch = args.branch_name || `task-group/${state.taskGroupId}`
+    const wtPath = args.worktree_path || path.join(repoRoot, ".worktree", `task-group-${state.taskGroupId}`)
 
     // 检查 worktree 是否已存在
     const wtList = await runGit(repoRoot, ["worktree", "list"])
@@ -1456,7 +1450,7 @@ export const set_worktree = tool({
         )
       }
       if (isTasksEmpty || allOpen) {
-        const parsedTasks = await parseTasksMdForGroup(context.worktree, state.changeId, state.currentTaskGroupId)
+        const parsedTasks = await parseTasksMdForGroup(context.worktree, state.changeId, state.taskGroupId)
         const newRelevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
         tg.tasks = parsedTasks.map((p, i) => ({
           id: String(i + 1),
@@ -1524,7 +1518,7 @@ export const status = tool({
       return JSON.stringify({ initialized: false, message: "编排会话尚未初始化。" }, null, 2)
     }
 
-    const tg = findTaskGroup(state, state.currentTaskGroupId)
+    const tg = findTaskGroup(state, state.taskGroupId)
 
     // Phase gate: 非 orchestrator 角色必须匹配当前可执行角色
     if (agent !== ORCHESTRATOR_AGENT) {
@@ -1565,7 +1559,7 @@ export const status = tool({
       const instructionBlock = [
         "# ✅ 当前轮到你执行",
         "",
-        `完成本职工作后**必须**调用 \`${submitTool}\` 提交。`,
+        `完成本职工作后**必须**调用 \`${submitTool}(task_group_id="${tg.id}")\` 提交。`,
         "即使无 issue / 无待处理项，也必须提交 passed=true。",
         "",
         "---",
@@ -1584,13 +1578,13 @@ export const status = tool({
 
 export const complete_task_group = tool({
   description:
-    "完成任务组收尾：合并 task-group 分支到 baseBranch → 清理 worktree 与分支 → 推进阶段。合并冲突时中止并返回 blocked（保留 worktree/分支）。",
+    "完成任务组收尾：合并 task-group 分支到 baseBranch → 清理 worktree 与分支。合并冲突时中止并返回 blocked（保留 worktree/分支）。",
   args: {},
   async execute(_args, context) {
     assertOrchestrator(context, "opx_orch_complete_task_group")
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    const tg = findTaskGroup(state, state.currentTaskGroupId)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (!tg.phases.review.completed || tg.status === "completed") {
       throw new Error(
         `阶段顺序错误：opx_orch_complete_task_group 需在 review 完成后调用，当前 review.completed=${tg.phases.review.completed}，tg.status=${tg.status}。`
@@ -1642,19 +1636,13 @@ export const complete_task_group = tool({
       }
     }
     tg.status = "completed"
-    // 推进 currentTaskGroupId 到下个 pending
-    const next = state.taskGroups.find((g) => g.status === "task_analysis" && g.id !== state.currentTaskGroupId && phasesAllEmpty(g))
-    if (next) state.currentTaskGroupId = next.id
     await writeState(context.worktree, state)
     return JSON.stringify(
       {
         status: "ok",
         completed_task_group: tg.id,
         merge_target: mergeTarget,
-        next_task_group: next?.id ?? null,
-        message: next
-          ? `任务组 "${tg.name}" 已完成并合并到 "${mergeTarget}"。下一任务组: "${next.name}"。请调用 opx_orch_init 开始。`
-          : `任务组 "${tg.name}" 已完成并合并到 "${mergeTarget}"。所有任务组均已完成。`,
+        message: `任务组已完成并合并到 "${mergeTarget}"。`,
       },
       null,
       2
@@ -1679,8 +1667,8 @@ export const arch_submit = tool({
     assertAgent(context, "opx_arch_submit", ["openspec-architect"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.currentTaskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：当前活跃任务组为 "${state.currentTaskGroupId}"，收到的是 "${args.task_group_id}"。`)
+    if (state.taskGroupId !== args.task_group_id) {
+      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
     }
     const tg = findTaskGroup(state, args.task_group_id)
     if (tg.status !== "task_analysis") {
@@ -1767,8 +1755,8 @@ export const dev_submit = tool({
     assertAgent(context, "opx_dev_submit", ["openspec-developer"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.currentTaskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：当前活跃任务组为 "${state.currentTaskGroupId}"，收到的是 "${args.task_group_id}"。`)
+    if (state.taskGroupId !== args.task_group_id) {
+      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
     }
     const tg = findTaskGroup(state, args.task_group_id)
     if (tg.status !== "dev_impl" && tg.status !== "review") {
@@ -2068,8 +2056,8 @@ export const tool_review_submit = tool({
     assertAgent(context, "opx_tool_review_submit", ["openspec-reviewer-tool"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.currentTaskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：当前活跃任务组为 "${state.currentTaskGroupId}"，收到的是 "${args.task_group_id}"。`)
+    if (state.taskGroupId !== args.task_group_id) {
+      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
     }
     const tg = findTaskGroup(state, args.task_group_id)
     if (tg.status !== "review") {
@@ -2195,8 +2183,8 @@ export const task_review_submit = tool({
     assertAgent(context, "opx_task_review_submit", ["openspec-reviewer-task"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.currentTaskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：当前活跃任务组为 "${state.currentTaskGroupId}"，收到的是 "${args.task_group_id}"。`)
+    if (state.taskGroupId !== args.task_group_id) {
+      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
     }
     const tg = findTaskGroup(state, args.task_group_id)
     if (tg.status !== "review") {
@@ -2374,8 +2362,8 @@ export const quality_review_submit = tool({
     }
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.currentTaskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：当前活跃任务组为 "${state.currentTaskGroupId}"，收到的是 "${args.task_group_id}"。`)
+    if (state.taskGroupId !== args.task_group_id) {
+      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
     }
     const tg = findTaskGroup(state, args.task_group_id)
     if (tg.status !== "review") {
@@ -2549,8 +2537,8 @@ export const resolve_review = tool({
     assertOrchestrator(context, "opx_orch_resolve_review")
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.currentTaskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：当前活跃任务组为 "${state.currentTaskGroupId}"，收到的是 "${args.task_group_id}"。`)
+    if (state.taskGroupId !== args.task_group_id) {
+      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
     }
     const tg = findTaskGroup(state, args.task_group_id)
     if (tg.status !== "review") {

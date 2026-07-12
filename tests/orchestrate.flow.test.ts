@@ -56,7 +56,7 @@ async function setupThroughQualityReady(
     orch: Ctx; arch: Ctx; dev: Ctx; toolReviewer: Ctx; taskReviewer: Ctx
   }
 ): Promise<void> {
-  await init.execute({ change_id: CID, current_task_group_id: "1" }, ctx.orch)
+  await init.execute({ change_id: CID, task_group_id: "1" }, ctx.orch)
   await arch_submit.execute({
     task_group_id: "1", passed: true, issues: [],
     execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -89,7 +89,7 @@ async function transitionToReview(
   if (!state) return
   const tg = state.taskGroups.find((g: any) => g.id === "1")
   await init.execute({
-    change_id: CID, current_task_group_id: "1",
+    change_id: CID, task_group_id: "1",
     recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
   }, orch)
 
@@ -126,14 +126,14 @@ describe("1. Happy Path — 完整流程", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     // 1. init
-    const r0 = JSON.parse(await init.execute({ change_id: CID, current_task_group_id: "1" }, o))
+    const r0 = JSON.parse(await init.execute({ change_id: CID, task_group_id: "1" }, o))
     expect(r0.status).toBe("initialized")
     expect(r0.active_phase).toBe("task_analysis")
     expect(r0.current_task_group.id).toBe("1")
     expect(r0.task_group_count).toBe(2)
 
     let state = readStateSync(wt, CID)
-    expect(state.currentTaskGroupId).toBe("1")
+    expect(state.taskGroupId).toBe("1")
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg.status).toBe("task_analysis")
     expect(tg.phases.architect_review.completed).toBe(false)
@@ -218,7 +218,6 @@ describe("1. Happy Path — 完整流程", () => {
     const r5 = JSON.parse(await complete_task_group.execute({}, o))
     expect(r5.status).toBe("ok")
     expect(r5.completed_task_group).toBe("1")
-    expect(r5.next_task_group).toBe("2")
 
     state = readStateSync(wt, CID)
     const tg8 = state.taskGroups.find((g: any) => g.id === "1")
@@ -243,10 +242,10 @@ describe("2. 完整流程（无驳回）", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
 
     let state = readStateSync(wt, CID)
-    expect(state.currentTaskGroupId).toBe("1")
+    expect(state.taskGroupId).toBe("1")
     let tg = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg.status).toBe("task_analysis")
     expect(tg.phases.architect_review.completed).toBe(false)
@@ -319,7 +318,7 @@ describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
 
     const r1 = JSON.parse(await arch_submit.execute({
       task_group_id: "1", passed: false,
@@ -446,7 +445,7 @@ describe("5. Recovery — dev_impl 阶段恢复", () => {
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
          d = makeCtx("openspec-developer", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -462,7 +461,7 @@ describe("5. Recovery — dev_impl 阶段恢复", () => {
     expect(state.taskGroups.find((g: any) => g.id === "1").tasks.every((t: any) => t.status === "submitted")).toBe(true)
 
     const r = JSON.parse(await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "dev_impl", worktree_path: devWt, branch_name: "task-group/1", preserve_progress: false },
     }, o))
     expect(r.status).toBe("initialized")
@@ -510,7 +509,7 @@ describe("6. Recovery — review 阶段恢复（保留 issues）", () => {
 
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
     const r = JSON.parse(await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: devWt, branch_name: "task-group/1", preserve_progress: true },
     }, o))
     expect(r.status).toBe("initialized")
@@ -545,7 +544,7 @@ describe("7. 多任务组 — 完成 group1 → 初始化 group2", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -568,9 +567,9 @@ describe("7. 多任务组 — 完成 group1 → 初始化 group2", () => {
 
     state = readStateSync(wt, CID)
     expect(state.taskGroups.find((g: any) => g.id === "1").status).toBe("completed")
-    expect(state.currentTaskGroupId).toBe("2")
+    expect(state.taskGroupId).toBe("1")
 
-    const r2 = JSON.parse(await init.execute({ change_id: CID, current_task_group_id: "2" }, o))
+    const r2 = JSON.parse(await init.execute({ change_id: CID, task_group_id: "2" }, o))
     expect(r2.status).toBe("initialized")
     expect(r2.current_task_group.id).toBe("2")
 
@@ -599,10 +598,10 @@ describe("8. Recovery — task_analysis 阶段（回退）", () => {
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
 
     const r = JSON.parse(await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "task_analysis", worktree_path: "", branch_name: "" },
     }, o))
     expect(r.status).toBe("initialized")
@@ -640,7 +639,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -657,7 +656,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     const s1 = readStateSync(wt, CID)
     const tg1 = s1.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg1.worktreePath, branch_name: tg1.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
@@ -677,7 +676,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     const s2 = readStateSync(wt, CID)
     const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg2.worktreePath, branch_name: tg2.branchName, preserve_progress: true },
     }, o)
     await dev_submit.execute({
@@ -709,7 +708,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -726,7 +725,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     const s1 = readStateSync(wt, CID)
     const tg1 = s1.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg1.worktreePath, branch_name: tg1.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
@@ -745,7 +744,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     const s2 = readStateSync(wt, CID)
     const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg2.worktreePath, branch_name: tg2.branchName, preserve_progress: true },
     }, o)
     await dev_submit.execute({
@@ -758,7 +757,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
     const s3 = readStateSync(wt, CID)
     const tg3 = s3.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg3.worktreePath, branch_name: tg3.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({
@@ -906,7 +905,7 @@ describe("12. resolve_review — continue / giveup", () => {
 
     try {
       // 1. init → arch → set_worktree → dev_submit
-      await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+      await init.execute({ change_id: CID, task_group_id: "1" }, o)
       await arch_submit.execute({
         task_group_id: "1", passed: true, issues: [],
         execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -926,7 +925,7 @@ describe("12. resolve_review — continue / giveup", () => {
         state = readStateSync(wt, CID)
         const tg = state.taskGroups.find((g: any) => g.id === "1")
         await init.execute({
-          change_id: CID, current_task_group_id: "1",
+          change_id: CID, task_group_id: "1",
           recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
         }, o)
 
@@ -1015,7 +1014,7 @@ describe("12. resolve_review — continue / giveup", () => {
         state = readStateSync(wt, CID)
         const tg = state.taskGroups.find((g: any) => g.id === "1")
         await init.execute({
-          change_id: CID, current_task_group_id: "1",
+          change_id: CID, task_group_id: "1",
           recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
         }, o)
 
@@ -1074,7 +1073,7 @@ describe("13. 去阶段化 — dev 在 dev_impl 状态下可见 review issue", (
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     // --- 1. Setup through quality ready (tool+task pass) ---
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1089,7 +1088,7 @@ describe("13. 去阶段化 — dev 在 dev_impl 状态下可见 review issue", (
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
@@ -1165,7 +1164,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     // --- 1. First full review cycle: tool+task passed, quality style fails ---
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1179,7 +1178,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
@@ -1248,7 +1247,7 @@ describe("15. base_branch 自动推导与异常", () => {
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     const state = readStateSync(wt, CID)
     expect(state.baseBranch).toBe("develop")
 
@@ -1262,7 +1261,7 @@ describe("15. base_branch 自动推导与异常", () => {
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1", base_branch: "release/1.0" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1", base_branch: "release/1.0" }, o)
     const state = readStateSync(wt, CID)
     expect(state.baseBranch).toBe("release/1.0")
 
@@ -1277,7 +1276,7 @@ describe("15. base_branch 自动推导与异常", () => {
     __setGitRunner(fakeGit)
     const o = makeCtx("openspec-orchestrator", wt)
 
-    const err = await init.execute({ change_id: CID, current_task_group_id: "1" }, o).catch((e: Error) => e)
+    const err = await init.execute({ change_id: CID, task_group_id: "1" }, o).catch((e: Error) => e)
     expect(err).toBeInstanceOf(Error)
     expect(err.message).toMatch(/detached HEAD|显式.*base_branch/)
 
@@ -1295,7 +1294,7 @@ describe("15. base_branch 自动推导与异常", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1", base_branch: "develop" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1", base_branch: "develop" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1309,7 +1308,7 @@ describe("15. base_branch 自动推导与异常", () => {
     const state2 = readStateSync(wt, CID)
     const tg = state2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
@@ -1381,7 +1380,7 @@ describe("16. line=0 + tool_eligible — 工具改进 issue 分离与边界扩�
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
          d = makeCtx("openspec-developer", wt),
          toolR = makeCtx("openspec-reviewer-tool", wt)
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1394,7 +1393,7 @@ describe("16. line=0 + tool_eligible — 工具改进 issue 分离与边界扩�
     const s2 = readStateSync(wt, CID)
     const tg = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
 
@@ -1426,7 +1425,7 @@ describe("16. line=0 + tool_eligible — 工具改进 issue 分离与边界扩�
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
 
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1441,7 +1440,7 @@ describe("16. line=0 + tool_eligible — 工具改进 issue 分离与边界扩�
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
@@ -1486,7 +1485,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
          d = makeCtx("openspec-developer", wt),
          toolR = makeCtx("openspec-reviewer-tool", wt)
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1499,7 +1498,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const s2 = readStateSync(wt, CID)
     const tg = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
 
@@ -1527,7 +1526,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
          d = makeCtx("openspec-developer", wt),
          toolR = makeCtx("openspec-reviewer-tool", wt)
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1540,7 +1539,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const s2 = readStateSync(wt, CID)
     const tg = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
 
@@ -1568,7 +1567,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
          d = makeCtx("openspec-developer", wt),
          toolR = makeCtx("openspec-reviewer-tool", wt)
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1581,7 +1580,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const s2 = readStateSync(wt, CID)
     const tg = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
 
@@ -1604,7 +1603,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
          d = makeCtx("openspec-developer", wt),
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1617,7 +1616,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const s2 = readStateSync(wt, CID)
     const tg = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
 
@@ -1648,7 +1647,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
          d = makeCtx("openspec-developer", wt),
          toolR = makeCtx("openspec-reviewer-tool", wt),
          taskR = makeCtx("openspec-reviewer-task", wt)
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1661,7 +1660,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const s2 = readStateSync(wt, CID)
     const tg = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
 
@@ -1736,7 +1735,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
          d = makeCtx("openspec-developer", wt),
          toolR = makeCtx("openspec-reviewer-tool", wt)
-    await init.execute({ change_id: CID, current_task_group_id: "1" }, o)
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
       task_group_id: "1", passed: true, issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
@@ -1749,7 +1748,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
     const s2 = readStateSync(wt, CID)
     const tg = s2.taskGroups.find((g: any) => g.id === "1")
     await init.execute({
-      change_id: CID, current_task_group_id: "1",
+      change_id: CID, task_group_id: "1",
       recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
     }, o)
 

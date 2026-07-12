@@ -843,6 +843,61 @@ describe("G17. rejectReason 存储", () => {
   })
 })
 
+// ── G19: task_review_submit 同步 tasks.md 复选框 ──
+
+describe("G19. task_review_submit 同步 tasks.md 复选框", () => {
+  test("verified task 所在行 [ ] → [x]", async () => {
+    const root = `/tmp/guard-g19-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    fakeGit.diffs.set(wt, ["src/T.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    // 验证提交前 tasks.md 为 [ ]
+    const tasksMdPath = join(wt, "openspec", "changes", CID, "tasks.md")
+    const before = readFileSync(tasksMdPath, "utf-8")
+    expect(before).toContain("- [ ] 1.1 T1")
+    expect(before).toContain("- [ ] 1.2 T2")
+
+    // 提交 task review（标记全部 verified）
+    await task_review_submit.execute({
+      task_group_id: "1", passed: true,
+      verified_task_ids: ["1", "2"], failed_task_ids: [],
+      fixed_issue_ids: [],
+    }, taskR)
+
+    // 验证 tasks.md 复选框已同步
+    const after = readFileSync(tasksMdPath, "utf-8")
+    expect(after).toContain("- [x] 1.1 T1")
+    expect(after).toContain("- [x] 1.2 T2")
+    expect(after).not.toContain("- [ ] 1.1 T1")
+    expect(after).not.toContain("- [ ] 1.2 T2")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
 // ── G18: tool_review_submit test_results 参数 ──
 
 describe("G18. tool_review_submit test_results 参数", () => {

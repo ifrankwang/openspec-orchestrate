@@ -2226,6 +2226,7 @@ export const task_review_submit = tool({
       const task = tasks.find((t) => t.id === id)
       if (task && task.status === "submitted") { task.status = "verified" }
     }
+    await updateTasksMdForVerifiedTasks(context.worktree, state.changeId, tg.tasks, verified)
     for (const f of failed) {
       const task = tasks.find((t) => t.id === f.task_id)
       if (task && task.status === "submitted") {

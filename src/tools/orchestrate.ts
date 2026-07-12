@@ -150,7 +150,6 @@ type QualityLayerProgress = Record<ReviewDimension, DimensionProgress>
 
 interface ReviewLayerData {
   completed: boolean
-  retryCount: number
   testResults?: string
 }
 
@@ -160,6 +159,7 @@ interface DevPhaseData {
 
 interface ReviewPhaseData {
   completed: boolean
+  retryCount: number
   tool: ReviewLayerData
   task: ReviewLayerData
   quality: ReviewLayerData & { progress: QualityLayerProgress }
@@ -208,9 +208,10 @@ function createEmptyPhases(): Phases {
     dev_impl: { completed: false },
     review: {
       completed: false,
-      tool: { completed: false, retryCount: 0 },
-      task: { completed: false, retryCount: 0 },
-      quality: { completed: false, retryCount: 0, progress: createEmptyQualityProgress() },
+      retryCount: 0,
+      tool: { completed: false },
+      task: { completed: false },
+      quality: { completed: false, progress: createEmptyQualityProgress() },
     },
   }
 }
@@ -233,9 +234,7 @@ function deriveStatus(tg: TaskGroupState, currentTaskGroupId: string): Orchestra
 }
 
 function phasesAllEmpty(tg: TaskGroupState): boolean {
-  const hasReviewActivity = tg.phases.review.tool.retryCount > 0
-    || tg.phases.review.task.retryCount > 0
-    || tg.phases.review.quality.retryCount > 0
+  const hasReviewActivity = tg.phases.review.retryCount > 0
   return !tg.phases.architect_review.completed
     && !tg.phases.dev_impl.completed
     && tg.tasks.every((t) => t.status === "open")
@@ -272,9 +271,8 @@ function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
 // 首轮（quality.retryCount===0）全部维度建基线；修复轮仅含存在 submitted issue 的维度。
 function computeRequiredDims(tg: TaskGroupState): ReviewDimension[] {
   const all = [...REVIEW_DIMENSIONS] as ReviewDimension[]
-  if (tg.phases.review.quality.retryCount === 0) return all
+  if (tg.phases.review.retryCount === 0) return all
   const dims = dimsWithPendingAction(tg)
-  if (dims.size === 0) return all
   return all.filter((d) => dims.has(d))
 }
 
@@ -771,11 +769,10 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
       }
     }
   }
-  // 规则 5：超限待决策态
+    // 规则 5：检查点待决策态
   if (tg.status === "review") {
-    const maxLayerRetry = Math.max(tg.phases.review.tool.retryCount, tg.phases.review.task.retryCount, tg.phases.review.quality.retryCount)
-    if (maxLayerRetry > MAX_RETRIES) {
-      checks.push(`- ℹ️ 审查重试超上限（maxLayerRetry=${maxLayerRetry}），当前正常待用户决策态。`)
+    if (tg.phases.review.retryCount > 0 && tg.phases.review.retryCount % MAX_RETRIES === 0) {
+      checks.push(`- ℹ️ 审查重试达到检查点（retryCount=${tg.phases.review.retryCount}），处于待用户决策态。`)
       checks.push(`  唯一动作：调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`)
     }
   }
@@ -795,9 +792,8 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   } else if (tg.phases.review.completed) {
     lines.push("所有审核层已完成，调用 `opx_orch_complete_task_group` 收尾。")
   } else if (tg.status === "review") {
-    const maxLayerRetry = Math.max(tg.phases.review.tool.retryCount, tg.phases.review.task.retryCount, tg.phases.review.quality.retryCount)
-    if (maxLayerRetry > MAX_RETRIES) {
-      lines.push("审查重试超上限（maxLayerRetry=" + maxLayerRetry + "），需要用户决策。")
+    if (tg.phases.review.retryCount > 0 && tg.phases.review.retryCount % MAX_RETRIES === 0) {
+      lines.push("审查重试达到检查点（retryCount=" + tg.phases.review.retryCount + "），需要用户决策。")
       lines.push("请调用 `opx_orch_resolve_review` 推进（continue：继续修 / giveup：放弃合并）。")
     } else {
       const agents = deriveCurrentAgents(tg)
@@ -1238,6 +1234,7 @@ export const init = tool({
           })
           tgIssues = [...existing.issues]
           // 保留 review layer 进度
+          phases.review.retryCount = existing.phases.review.retryCount
           phases.review.tool = existing.phases.review.tool
           phases.review.task = existing.phases.review.task
           phases.review.quality = existing.phases.review.quality
@@ -1248,6 +1245,7 @@ export const init = tool({
           }))
           tgIssues = existing?.issues ?? []
           if (existing && args.recovery) {
+            phases.review.retryCount = existing.phases.review.retryCount
             phases.review.tool = existing.phases.review.tool
             phases.review.task = existing.phases.review.task
             phases.review.quality = existing.phases.review.quality
@@ -1262,7 +1260,7 @@ export const init = tool({
           }
           if (rl === "quality") {
             phases.review.task.completed = true
-            phases.review.quality.retryCount = 0
+            phases.review.retryCount = 0
             phases.review.quality.progress = createEmptyQualityProgress()
           }
         }
@@ -1853,7 +1851,6 @@ export const dev_submit = tool({
       tg.phases.review.task.completed = false
       tg.phases.review.quality.completed = false
       tg.phases.review.quality.progress = createEmptyQualityProgress()
-      tg.phases.review.quality.retryCount = 0
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
       nextMsg = "请分派各 reviewer 重新审查\n将从 tool 层重新开始审核"
@@ -2147,16 +2144,15 @@ export const tool_review_submit = tool({
       })
     }
 
-    tg.phases.review.tool.retryCount++
-    const retryCount = tg.phases.review.tool.retryCount
-    if (retryCount > MAX_RETRIES) {
+    tg.phases.review.retryCount++
+    const retryCount = tg.phases.review.retryCount
+    if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
       await writeState(context.worktree, state)
       return JSON.stringify({
         status: "needs_user_decision",
         layer: "tool",
         retry_count: retryCount,
-        max_retries: MAX_RETRIES,
-        message: `tool 层审核重试已达上限（第 ${retryCount}/${MAX_RETRIES} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
+        message: `审查重试达到检查点（第 ${retryCount} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
       })
     }
     tg.phases.review.tool.completed = false
@@ -2166,9 +2162,8 @@ export const tool_review_submit = tool({
       status: "rejected",
       phase: "review→dev_impl",
       retry_count: retryCount,
-      max_retries: MAX_RETRIES,
       layer: "tool",
-      message: `tool 层审核不通过（第 ${retryCount}/${MAX_RETRIES} 轮）。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
+      message: `tool 层审核不通过（第 ${retryCount} 轮）。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
     })
   },
 })
@@ -2321,16 +2316,15 @@ export const task_review_submit = tool({
       })
     }
 
-    tg.phases.review.task.retryCount++
-    const retryCount = tg.phases.review.task.retryCount
-    if (retryCount > MAX_RETRIES) {
+    tg.phases.review.retryCount++
+    const retryCount = tg.phases.review.retryCount
+    if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
       await writeState(context.worktree, state)
       return JSON.stringify({
         status: "needs_user_decision",
         layer: "task",
         retry_count: retryCount,
-        max_retries: MAX_RETRIES,
-        message: `task 层审核重试已达上限（第 ${retryCount}/${MAX_RETRIES} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
+        message: `审查重试达到检查点（第 ${retryCount} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
       })
     }
     tg.phases.review.task.completed = false
@@ -2340,9 +2334,8 @@ export const task_review_submit = tool({
       status: "rejected",
       phase: "review→dev_impl",
       retry_count: retryCount,
-      max_retries: MAX_RETRIES,
       layer: "task",
-      message: `task 层审核不通过（第 ${retryCount}/${MAX_RETRIES} 轮）。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
+      message: `task 层审核不通过（第 ${retryCount} 轮）。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
     })
   },
 })
@@ -2469,7 +2462,7 @@ async function finalizeQualityPhase(
   const allDims = Object.keys(tg.phases.review.quality.progress) as ReviewDimension[]
   const submittedDims = dimsWithPendingAction(tg)
   const requiredDims: ReviewDimension[] =
-    tg.phases.review.quality.retryCount === 0
+    tg.phases.review.retryCount === 0
       ? allDims
       : allDims.filter((d) => tg.phases.review.quality.progress[d].submitted || submittedDims.has(d))
   const allSubmitted = requiredDims.every((d) => tg.phases.review.quality.progress[d].submitted)
@@ -2506,20 +2499,19 @@ async function finalizeQualityPhase(
     })
   }
 
-  tg.phases.review.quality.retryCount++
-  const retryCount = tg.phases.review.quality.retryCount
+  tg.phases.review.retryCount++
+  const retryCount = tg.phases.review.retryCount
   const reason = failedDims.length > 0
     ? `${failedDims.join(", ")} 未通过`
     : "存在未解决的 Low+ open/rejected issue"
 
-  if (retryCount > MAX_RETRIES) {
+  if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
     await writeState(context.worktree, state)
     return JSON.stringify({
       status: "needs_user_decision",
       layer: "quality",
       retry_count: retryCount,
-      max_retries: MAX_RETRIES,
-      message: `quality 层审核重试已达上限（第 ${retryCount}/${MAX_RETRIES} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
+      message: `审查重试达到检查点（第 ${retryCount} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
     })
   }
 
@@ -2531,11 +2523,10 @@ async function finalizeQualityPhase(
     status: "rejected",
     phase: "review→dev_impl",
     retry_count: retryCount,
-    max_retries: MAX_RETRIES,
     layer: "quality",
     failed_dimensions: failedDims,
     has_residual_blocking: hasResidualBlocking,
-    message: `quality 层审查不通过（第 ${retryCount}/${MAX_RETRIES} 轮）：${reason}。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
+    message: `quality 层审查不通过（第 ${retryCount} 轮）：${reason}。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
   })
 }
 
@@ -2565,20 +2556,17 @@ export const resolve_review = tool({
     if (tg.status !== "review") {
       throw new Error(`opx_orch_resolve_review 仅在 review 阶段可用，当前阶段为 "${tg.status}"。`)
     }
-    const maxLayerRetry = Math.max(tg.phases.review.tool.retryCount, tg.phases.review.task.retryCount, tg.phases.review.quality.retryCount)
-    if (maxLayerRetry <= MAX_RETRIES) {
+    const maxLayerRetry = tg.phases.review.retryCount
+    if (maxLayerRetry === 0 || maxLayerRetry % MAX_RETRIES !== 0) {
       throw new Error(
-        `opx_orch_resolve_review 仅在审查重试超上限（maxLayerRetry > ${MAX_RETRIES}，needs_user_decision 状态）时调用；` +
-          `当前 tool=${tg.phases.review.tool.retryCount} task=${tg.phases.review.task.retryCount} quality=${tg.phases.review.quality.retryCount}。`
+        `opx_orch_resolve_review 仅在审查重试达到检查点（retryCount 为 ${MAX_RETRIES} 的整数倍，needs_user_decision 状态）时调用；` +
+          `当前 retryCount=${tg.phases.review.retryCount}。`
       )
     }
 
     if (args.decision === "continue") {
-      tg.phases.review.tool.retryCount = 0
       tg.phases.review.tool.completed = false
-      tg.phases.review.task.retryCount = 0
       tg.phases.review.task.completed = false
-      tg.phases.review.quality.retryCount = 0
       tg.phases.review.quality.completed = false
       tg.phases.review.quality.progress = createEmptyQualityProgress()
       tg.phases.review.completed = false

@@ -735,7 +735,7 @@ describe("G16. 层失败回退 dev_impl", () => {
     const state2 = readStateSync(wt, CID)
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
     expect(tg2.status).toBe("dev_impl")
-    expect(tg2.phases.review.tool.retryCount).toBe(1)
+    expect(tg2.phases.review.retryCount).toBe(1)
 
     await expect(
       task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
@@ -786,7 +786,7 @@ describe("G16. 层失败回退 dev_impl", () => {
     const state2 = readStateSync(wt, CID)
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
     expect(tg2.status).toBe("dev_impl")
-    expect(tg2.phases.review.task.retryCount).toBe(1)
+    expect(tg2.phases.review.retryCount).toBe(1)
 
     await expect(
       quality_review_submit.execute({ task_group_id: "1", passed: true, issues: [] }, makeCtx("openspec-reviewer-style", wt))

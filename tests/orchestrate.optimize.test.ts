@@ -638,7 +638,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 
-  // B3.6 recovery review + review_layer=quality → 重置 quality.retryCount=0 + 清除 progress，门禁放行全部 5 维
+  // B3.6 recovery review + review_layer=quality → 重置 retryCount=0 + 清除 progress，门禁放行全部 5 维
   test("recovery review+review_layer=quality → 重置 retryCount 和 progress，quality reviewer 可过 gate", async () => {
     const root = `/tmp/optimize-b3f-${Date.now()}`
     const wt = freshWt(root)
@@ -674,7 +674,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     // 模拟 quality 已有历史：retryCount=2，部分维度已提交
     state = readStateSync(wt, CID)
     const tg1 = state.taskGroups.find((g: any) => g.id === "1")
-    tg1.phases.review.quality.retryCount = 2
+    tg1.phases.review.retryCount = 2
     tg1.phases.review.quality.progress.style = { submitted: true, passed: true }
     tg1.phases.review.quality.progress.architecture = { submitted: true, passed: true }
     writeFileSync(
@@ -697,7 +697,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     // 验证 retryCount=0 且 progress 清空
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg2.phases.review.quality.retryCount).toBe(0)
+    expect(tg2.phases.review.retryCount).toBe(0)
     for (const dim of ["style", "architecture", "performance", "security", "maintainability"]) {
       expect(tg2.phases.review.quality.progress[dim].submitted).toBe(false)
       expect(tg2.phases.review.quality.progress[dim].passed).toBe(false)
@@ -753,7 +753,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     // 恢复时指定 review_layer=quality 且 preserveProgress
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    const origToolRetry = tg2.phases.review.tool.retryCount
+    const origToolRetry = tg2.phases.review.retryCount
     await init.execute({
       change_id: CID, current_task_group_id: "1",
       recovery: {
@@ -770,7 +770,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     expect(tg3.phases.review.tool.completed).toBe(true)
     expect(tg3.phases.review.task.completed).toBe(true)
     // preserveProgress 应保留 retryCount
-    expect(tg3.phases.review.tool.retryCount).toBe(origToolRetry)
+    expect(tg3.phases.review.retryCount).toBe(origToolRetry)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -840,11 +840,11 @@ describe("B4. 空 issue 正常提交回归", () => {
 })
 
 // ════════════════════════════════════════════════════════════════
-//  Behavior 5: dev_submit 重置 quality.retryCount（修复 B 验证）
+//  Behavior 5: dev_submit 不再重置 retryCount（修复 B 验证）
 // ════════════════════════════════════════════════════════════════
 
-describe("B5. dev_submit 重置 quality.retryCount", () => {
-  test("quality 失败 → dev 修复提交 → retryCount=0, quality gate 放行", async () => {
+describe("B5. dev_submit 不再重置 retryCount", () => {
+  test("quality 失败 → dev 修复提交 → retryCount 保持 1, quality gate 仅调有 issue 的维度", async () => {
     const root = `/tmp/optimize-b5-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -865,7 +865,7 @@ describe("B5. dev_submit 重置 quality.retryCount", () => {
 
     let state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg.phases.review.quality.retryCount).toBe(1)
+    expect(tg.phases.review.retryCount).toBe(1)
     expect(tg.status).toBe("dev_impl")
 
     const issueId = tg.issues[0].id
@@ -877,7 +877,7 @@ describe("B5. dev_submit 重置 quality.retryCount", () => {
 
     state = readStateSync(wt, CID)
     const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tgAfter.phases.review.quality.retryCount).toBe(0)
+    expect(tgAfter.phases.review.retryCount).toBe(1) // 保持累加，不清零
 
     // 3. tool+task 重新通过
     await init.execute({
@@ -887,15 +887,15 @@ describe("B5. dev_submit 重置 quality.retryCount", () => {
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [issueId] }, toolR)
     await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
-    // 4. quality gate 放行全部 5 维（retryCount=0 首轮）
+    // 4. retryCount=1 修复轮 — tool 已裁定 issue→verified，dimsWithPendingAction 空 → 当前无预期角色
     const styleR = makeCtx("openspec-reviewer-style", wt)
     const archR = makeCtx("openspec-reviewer-architecture", wt)
     const styleView = await status.execute({}, styleR)
     const styleStr = typeof styleView === "string" ? styleView : JSON.stringify(styleView)
-    expect(styleStr).toMatch(/✅ 当前轮到你执行/)
+    expect(styleStr).not.toMatch(/✅ 当前轮到你执行/) // style issue 已被 tool 裁定为 verified → 空激活集
     const archView = await status.execute({}, archR)
     const archStr = typeof archView === "string" ? archView : JSON.stringify(archView)
-    expect(archStr).toMatch(/✅ 当前轮到你执行/)
+    expect(archStr).not.toMatch(/✅ 当前轮到你执行/) // 同上
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -951,7 +951,7 @@ describe("B6. opx_status 编排者视图 review 进展", () => {
 // ════════════════════════════════════════════════════════════════
 
 describe("B7. computeRequiredDims 异常回退", () => {
-  test("retryCount>0 但无 pending issue → 回退放行全部维度", async () => {
+  test("retryCount>0 但无 pending issue → 空激活集 → 全都不过 gate", async () => {
     const root = `/tmp/optimize-b7-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -959,10 +959,10 @@ describe("B7. computeRequiredDims 异常回退", () => {
 
     await setupThroughReviewReady(wt, fakeGit)
 
-    // 手动制造僵尸状态：quality.retryCount=2 但无 pending issue（无 submitted/exemption issue）
+    // 手动制造僵尸状态：retryCount=2 但无 pending issue（无 submitted/exemption issue）
     const state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    tg.phases.review.quality.retryCount = 2
+    tg.phases.review.retryCount = 2
     tg.phases.review.quality.progress = {
       style: { submitted: false, passed: false },
       architecture: { submitted: false, passed: false },
@@ -975,15 +975,15 @@ describe("B7. computeRequiredDims 异常回退", () => {
       JSON.stringify(state, null, 2)
     )
 
-    // quality reviewer 应仍可通过 gate（computeRequiredDims 回退到全维度）
+    // retryCount>0 且无 pending → 空激活集 → 全都不过 gate
     const styleR = makeCtx("openspec-reviewer-style", wt)
     const archR = makeCtx("openspec-reviewer-architecture", wt)
     const styleView = await status.execute({}, styleR)
     const styleStr = typeof styleView === "string" ? styleView : JSON.stringify(styleView)
-    expect(styleStr).toMatch(/✅ 当前轮到你执行/)
+    expect(styleStr).not.toMatch(/✅ 当前轮到你执行/)
     const archView = await status.execute({}, archR)
     const archStr = typeof archView === "string" ? archView : JSON.stringify(archView)
-    expect(archStr).toMatch(/✅ 当前轮到你执行/)
+    expect(archStr).not.toMatch(/✅ 当前轮到你执行/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

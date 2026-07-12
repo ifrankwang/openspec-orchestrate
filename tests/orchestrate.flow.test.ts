@@ -878,7 +878,7 @@ describe("11. 守卫 — quality 阶段阻塞 issue", () => {
 
     const state = readStateSync(wt, CID)
     const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tgAfter.phases.review.quality.retryCount).toBe(1)
+    expect(tgAfter.phases.review.retryCount).toBe(1)
     expect(tgAfter.status).toBe("dev_impl")
     const allNotSubmitted = Object.values(tgAfter.phases.review.quality.progress).every(
       (p: any) => p.submitted === false,
@@ -917,12 +917,12 @@ describe("12. resolve_review — continue / giveup", () => {
       fakeGit.diffs.set(devWt, ["src/F1.java"])
       await dev_submit.execute({ task_group_id: "1" }, d)
 
-      // 2. 4 轮 tool 失败：
-      //    - 前 3 轮 rejected（→dev_submit 修复）
-      //    - 第 4 轮 needs_user_decision
+      // 2. 3 轮 tool 失败（审查重试达到检查点 retryCount=3）：
+      //    - 前 2 轮 rejected（→dev_submit 修复）
+      //    - 第 3 轮 needs_user_decision
       // 每轮需通过 init(recovery to review)→dev_submit(review mode)
       // 重置 tool.completed 后才能再次提交 tool
-      for (let round = 1; round <= 4; round++) {
+      for (let round = 1; round <= 3; round++) {
         state = readStateSync(wt, CID)
         const tg = state.taskGroups.find((g: any) => g.id === "1")
         await init.execute({
@@ -939,7 +939,7 @@ describe("12. resolve_review — continue / giveup", () => {
           task_group_id: "1", passed: false, issues: [], fixed_issue_ids: [],
         }, toolR))
 
-        if (round < 4) {
+        if (round < 3) {
           expect(r.status).toBe("rejected")
           expect(r.retry_count).toBe(round)
         } else {
@@ -947,14 +947,14 @@ describe("12. resolve_review — continue / giveup", () => {
         }
       }
 
-      // 3. resolve_review(continue)
+      // 3. resolve_review(continue) — 不再重置 retryCount
       const rc = JSON.parse(await resolve_review.execute({ task_group_id: "1", decision: "continue" }, o))
       expect(rc.status).toBe("ok")
       expect(rc.decision).toBe("continue")
 
       state = readStateSync(wt, CID)
       const tgS = state.taskGroups.find((g: any) => g.id === "1")
-      expect(tgS.phases.review.tool.retryCount).toBe(0)
+      expect(tgS.phases.review.retryCount).toBe(3)
       expect(tgS.phases.review.tool.completed).toBe(false)
       expect(tgS.phases.review.task.completed).toBe(false)
       expect(tgS.phases.review.quality.completed).toBe(false)
@@ -1009,9 +1009,9 @@ describe("12. resolve_review — continue / giveup", () => {
       expect(lastRes.status).toBe("rejected")
       expect(lastRes.retry_count).toBe(1)
 
-      // Rounds 2-4：recovery → quality submit（仅 style 维度）。
+      // Rounds 2-3：recovery → quality submit（仅 style 维度）。
       // 不再需要 dev_submit 重置——finalizeQualityPhase 已自动重置 quality.progress 和 quality.completed
-      for (let round = 2; round <= 4; round++) {
+      for (let round = 2; round <= 3; round++) {
         state = readStateSync(wt, CID)
         const tg = state.taskGroups.find((g: any) => g.id === "1")
         await init.execute({
@@ -1025,7 +1025,7 @@ describe("12. resolve_review — continue / giveup", () => {
           fixed_issue_ids: [],
         }, makeCtx("openspec-reviewer-style", wt)))
 
-        if (round < 4) {
+        if (round < 3) {
           expect(lastRes.status).toBe("rejected")
           expect(lastRes.retry_count).toBe(round)
         } else {
@@ -1209,7 +1209,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
     const tgFix = state.taskGroups.find((g: any) => g.id === "1")
     expect(tgFix.status).toBe("review")
     expect(tgFix.phases.review.task.completed).toBe(true)
-    expect(tgFix.phases.review.quality.retryCount).toBe(0)
+    expect(tgFix.phases.review.retryCount).toBe(1) // dev_submit 不再清零
     expect(tgFix.tasks.every((t: any) => t.status === "verified")).toBe(true)
 
     // --- 4. Tool review passes (with fixed issue) ---

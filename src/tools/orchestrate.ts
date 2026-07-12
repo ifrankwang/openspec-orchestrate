@@ -667,11 +667,15 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   lines.push("|------|------|")
   const phaseSummary = (name: string, p: { completed: boolean }) => p.completed ? "✓" : (tg.status === name ? "●" : "✗")
   lines.push(`| task_analysis | ${phaseSummary("task_analysis", tg.phases.architect_review)} |`)
-  const devStatus = tg.phases.dev_impl.completed ? "✓" : (tg.status === "dev_impl" ? "●" : "✗")
+  const devStatus = tg.phases.dev_impl.completed ? "✓" : (tg.status === "dev_impl" ? "●" : (tg.status === "review" ? "⭕" : "✗"))
   lines.push(`| dev_impl | ${devStatus} |`)
   const reviewParts: string[] = []
   if (tg.phases.review.tool.completed) reviewParts.push("tool✓")
-  if (tg.phases.review.task.completed) reviewParts.push("task✓")
+  if (tg.phases.review.task.completed && !tg.phases.review.tool.completed && allTasksVerified(tg.tasks)) {
+    reviewParts.push("task(跳过)")
+  } else if (tg.phases.review.task.completed) {
+    reviewParts.push("task✓")
+  }
   if (tg.phases.review.quality.completed) reviewParts.push("quality✓")
   if (!tg.phases.review.tool.completed) reviewParts.push("tool⏳")
   else if (!tg.phases.review.task.completed) reviewParts.push("task⏳")
@@ -765,6 +769,14 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
         checks.push(`- ⚠️ review 内部矛盾：维度 ${dim} passed 但仍有 ${openInDim.length} 个阻塞 issue`)
         checks.push(`  建议：\`opx_orch_init({ recovery: { phase: "${tg.status === "completed" ? "review" : tg.status}", ... } })\``)
       }
+    }
+  }
+  // 规则 5：超限待决策态
+  if (tg.status === "review") {
+    const maxLayerRetry = Math.max(tg.phases.review.tool.retryCount, tg.phases.review.task.retryCount, tg.phases.review.quality.retryCount)
+    if (maxLayerRetry > MAX_RETRIES) {
+      checks.push(`- ℹ️ 审查重试超上限（maxLayerRetry=${maxLayerRetry}），当前正常待用户决策态。`)
+      checks.push(`  唯一动作：调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`)
     }
   }
   if (checks.length > 0) {
@@ -1120,6 +1132,13 @@ export const init = tool({
   async execute(args, context) {
     assertOrchestrator(context, "opx_orch_init")
 
+    // 兜底：若 recovery 参数被模型序列化为字符串，自动解析
+    if (typeof args.recovery === "string") {
+      try { args.recovery = JSON.parse(args.recovery) as any } catch {
+        throw new Error(`recovery 参数解析失败：传入的字符串无法解析为对象。传入值：${args.recovery}`)
+      }
+    }
+
     if (args.recovery?.review_layer && args.recovery.phase !== "review") {
       throw new Error("review_layer 参数仅当 recovery.phase 为 review 时有效，当前 phase 为 \"" + args.recovery.phase + "\"。")
     }
@@ -1308,6 +1327,11 @@ export const init = tool({
     if (args.recovery) {
       ctg.worktreePath = args.recovery.worktree_path
       ctg.branchName = args.recovery.branch_name
+      if (args.recovery.phase !== "task_analysis" && !args.recovery.worktree_path) {
+        throw new Error(
+          `recovery 缺少 worktree_path，无法获取 merge-base。请提供有效 worktree 路径。`
+        )
+      }
       const baseRef = await getMergeBase(args.recovery.worktree_path, baseBranch)
       if (!baseRef) throw new Error(`无法获取 worktree 与 ${baseBranch} 的 merge-base：${args.recovery.worktree_path}`)
       ctg.baseRef = baseRef
@@ -2128,8 +2152,11 @@ export const tool_review_submit = tool({
     if (retryCount > MAX_RETRIES) {
       await writeState(context.worktree, state)
       return JSON.stringify({
-        status: "ok",
-        message: `tool 层审核结果已记录。`,
+        status: "needs_user_decision",
+        layer: "tool",
+        retry_count: retryCount,
+        max_retries: MAX_RETRIES,
+        message: `tool 层审核重试已达上限（第 ${retryCount}/${MAX_RETRIES} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
       })
     }
     tg.phases.review.tool.completed = false
@@ -2299,8 +2326,11 @@ export const task_review_submit = tool({
     if (retryCount > MAX_RETRIES) {
       await writeState(context.worktree, state)
       return JSON.stringify({
-        status: "ok",
-        message: `task 层审核结果已记录。`,
+        status: "needs_user_decision",
+        layer: "task",
+        retry_count: retryCount,
+        max_retries: MAX_RETRIES,
+        message: `task 层审核重试已达上限（第 ${retryCount}/${MAX_RETRIES} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
       })
     }
     tg.phases.review.task.completed = false
@@ -2344,6 +2374,11 @@ export const quality_review_submit = tool({
         `仅支持：${Object.values(DIMENSION_AGENT_MAP).join(", ")}。`
       )
     }
+    if (typeof args.passed !== "boolean" && args.passed !== "true" && args.passed !== "false") {
+      throw new Error(
+        `参数 passed 必须为布尔值（true/false），收到类型 "${typeof args.passed}"，值 "${args.passed}"。`
+      )
+    }
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
     if (state.currentTaskGroupId !== args.task_group_id) {
@@ -2360,7 +2395,7 @@ export const quality_review_submit = tool({
       throw new Error(`维度 "${dimension}" 的审查报告已提交，不允许重复提交。`)
     }
 
-    const passed = args.passed === true
+    const passed = args.passed === true || (args.passed as any) === "true"
     const issues = (args.issues || []) as any[]
     assertPassWithIssues(passed, issues, "opx_quality_review_submit")
 
@@ -2480,8 +2515,11 @@ async function finalizeQualityPhase(
   if (retryCount > MAX_RETRIES) {
     await writeState(context.worktree, state)
     return JSON.stringify({
-      status: "ok",
-      message: `quality 层审核结果已记录。`,
+      status: "needs_user_decision",
+      layer: "quality",
+      retry_count: retryCount,
+      max_retries: MAX_RETRIES,
+      message: `quality 层审核重试已达上限（第 ${retryCount}/${MAX_RETRIES} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
     })
   }
 

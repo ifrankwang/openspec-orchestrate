@@ -943,7 +943,7 @@ describe("12. resolve_review — continue / giveup", () => {
           expect(r.status).toBe("rejected")
           expect(r.retry_count).toBe(round)
         } else {
-          expect(r.status).toBe("ok")
+          expect(r.status).toBe("needs_user_decision")
         }
       }
 
@@ -1029,7 +1029,7 @@ describe("12. resolve_review — continue / giveup", () => {
           expect(lastRes.status).toBe("rejected")
           expect(lastRes.retry_count).toBe(round)
         } else {
-          expect(lastRes.status).toBe("ok")
+          expect(lastRes.status).toBe("needs_user_decision")
         }
       }
 

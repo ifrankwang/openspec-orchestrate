@@ -56,8 +56,12 @@ export function injectAgents(config: Record<string, unknown>): void {
         mode: frontmatter.mode ?? "subagent",
         prompt: body,
       }
-      if (frontmatter.maxSteps !== undefined) {
-        agentConfig.maxSteps = frontmatter.maxSteps
+      if (frontmatter.hidden !== undefined) {
+        agentConfig.hidden = frontmatter.hidden
+      }
+      const maxSteps = (frontmatter.maxSteps ?? frontmatter.steps) as number | undefined
+      if (maxSteps !== undefined) {
+        agentConfig.maxSteps = maxSteps
       }
       const perm = mapPermission(frontmatter)
       if (perm) agentConfig.permission = perm

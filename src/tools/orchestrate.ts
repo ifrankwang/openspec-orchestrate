@@ -160,6 +160,7 @@ interface DevPhaseData {
 interface ReviewPhaseData {
   completed: boolean
   retryCount: number
+  qualityBaselineDone: boolean
   tool: ReviewLayerData
   task: ReviewLayerData
   quality: ReviewLayerData & { progress: QualityLayerProgress }
@@ -209,6 +210,7 @@ function createEmptyPhases(): Phases {
     review: {
       completed: false,
       retryCount: 0,
+      qualityBaselineDone: false,
       tool: { completed: false },
       task: { completed: false },
       quality: { completed: false, progress: createEmptyQualityProgress() },
@@ -268,10 +270,10 @@ function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
 }
 
 // 派生本轮需审查的维度集（不持久化）：
-// 首轮（quality.retryCount===0）全部维度建基线；修复轮仅含存在 submitted issue 的维度。
+// qualityBaselineDone=false 时全部维度建基线；修复轮仅含存在 submitted/exemption issue 的维度。
 function computeRequiredDims(tg: TaskGroupState): ReviewDimension[] {
   const all = [...REVIEW_DIMENSIONS] as ReviewDimension[]
-  if (tg.phases.review.retryCount === 0) return all
+  if (!tg.phases.review.qualityBaselineDone) return all
   const dims = dimsWithPendingAction(tg)
   return all.filter((d) => dims.has(d))
 }
@@ -1229,6 +1231,7 @@ export const init = tool({
           tgIssues = [...existing.issues]
           // 保留 review layer 进度
           phases.review.retryCount = existing.phases.review.retryCount
+          phases.review.qualityBaselineDone = existing.phases.review.qualityBaselineDone
           phases.review.tool = existing.phases.review.tool
           phases.review.task = existing.phases.review.task
           phases.review.quality = existing.phases.review.quality
@@ -1240,6 +1243,7 @@ export const init = tool({
           tgIssues = existing?.issues ?? []
           if (existing && args.recovery) {
             phases.review.retryCount = existing.phases.review.retryCount
+            phases.review.qualityBaselineDone = existing.phases.review.qualityBaselineDone
             phases.review.tool = existing.phases.review.tool
             phases.review.task = existing.phases.review.task
             phases.review.quality = existing.phases.review.quality
@@ -1256,6 +1260,7 @@ export const init = tool({
             phases.review.task.completed = true
             phases.review.retryCount = 0
             phases.review.quality.progress = createEmptyQualityProgress()
+            phases.review.qualityBaselineDone = false
           }
         }
 
@@ -1533,6 +1538,18 @@ export const status = tool({
           "请立即结束当前会话，不要执行任何操作。",
         ].join("\n")
       }
+    }
+
+    // 兜底：baseline 已建但无待审维度 — 自动收尾
+    if (
+      tg.status === "review" &&
+      tg.phases.review.qualityBaselineDone &&
+      !tg.phases.review.quality.completed &&
+      deriveCurrentAgents(tg).length === 0
+    ) {
+      tg.phases.review.quality.completed = true
+      tg.phases.review.completed = true
+      await writeState(context.worktree, state)
     }
 
     let view: string
@@ -1847,6 +1864,12 @@ export const dev_submit = tool({
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
       nextMsg = "请分派 openspec-reviewer-tool 开始 tool review"
+    }
+
+    // 自动跳过：baseline 已完成且本轮无待审维度
+    if (tg.phases.review.qualityBaselineDone && requiredDims.length === 0) {
+      tg.phases.review.quality.completed = true
+      tg.phases.review.completed = true
     }
 
     // 跳过判定：修复轮无待验证 task 时跳过 task review
@@ -2451,7 +2474,7 @@ async function finalizeQualityPhase(
   const allDims = Object.keys(tg.phases.review.quality.progress) as ReviewDimension[]
   const submittedDims = dimsWithPendingAction(tg)
   const requiredDims: ReviewDimension[] =
-    tg.phases.review.retryCount === 0
+    !tg.phases.review.qualityBaselineDone
       ? allDims
       : allDims.filter((d) => tg.phases.review.quality.progress[d].submitted || submittedDims.has(d))
   const allSubmitted = requiredDims.every((d) => tg.phases.review.quality.progress[d].submitted)
@@ -2468,6 +2491,9 @@ async function finalizeQualityPhase(
       message: `[${dimension}] 已提交（激活维度 ${submittedCount}/${totalCount}）。等待其余激活维度审查报告，全部提交后自动判定整体结果。`,
     })
   }
+
+  // 全维已提交——标识基线建立
+  tg.phases.review.qualityBaselineDone = true
 
   const failedDims: ReviewDimension[] = []
   for (const d of requiredDims) {
@@ -2558,6 +2584,7 @@ export const resolve_review = tool({
       tg.phases.review.task.completed = false
       tg.phases.review.quality.completed = false
       tg.phases.review.quality.progress = createEmptyQualityProgress()
+      tg.phases.review.qualityBaselineDone = false
       tg.phases.review.completed = false
       tg.status = "dev_impl"
       await writeState(context.worktree, state)
@@ -2566,7 +2593,7 @@ export const resolve_review = tool({
           status: "ok",
           decision: "continue",
           phase: "review(in_progress)",
-          message: "已重置重试计数与各层审查进度，回到 tool 层基线。请分派 openspec-developer 修复后调用 opx_dev_submit。",
+          message: "已重置各层审查进度，回到 tool 层基线。请分派 openspec-developer 修复后调用 opx_dev_submit。",
         },
         null,
         2

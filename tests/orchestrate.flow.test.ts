@@ -416,19 +416,14 @@ describe("4. 豁免裁定 — tool 层通过 exempt_issue_ids 授权", () => {
     state = readStateSync(wt, CID)
     expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exempted")
 
-    // Quality re-run (5 dims all pass)
-    for (let i = 0; i < dims.length; i++) {
-      const res = JSON.parse(await quality_review_submit.execute({
-        task_group_id: "1", passed: true, issues: [],
-      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
-      if (i < dims.length - 1) expect(res.status).toBe("partial")
-      else {
-        expect(res.status).toBe("ok")
-        expect(res.phase).toBe("review=completed")
-      }
-    }
+    // Quality re-run — only affected dim
+    const res = JSON.parse(await quality_review_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+    }, makeCtx("openspec-reviewer-style", wt)))
+    expect(res.status).toBe("ok")
+    expect(res.phase).toBe("review=completed")
 
-    try { rmSync(root, { recursive: true, force: true }) } catch {}
+    try { rmSync(root, { recursive: true, force: true })} catch {}
   })
 })
 
@@ -824,17 +819,12 @@ describe("10. quality 层豁免 — quality reviewer 裁定", () => {
     // dev_submit reset layers. Re-run with exemption.
     await transitionToReview(wt, o, toolR, taskR, [issueId])
 
-    // All quality re-run (issue exempted)
-    for (let i = 0; i < dims.length; i++) {
-      const res = JSON.parse(await quality_review_submit.execute({
-        task_group_id: "1", passed: true, issues: [],
-      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
-      if (i < dims.length - 1) expect(res.status).toBe("partial")
-      else {
-        expect(res.status).toBe("ok")
-        expect(res.phase).toBe("review=completed")
-      }
-    }
+    // Quality — only affected dim, issue already exempted
+    const res = JSON.parse(await quality_review_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+    }, makeCtx("openspec-reviewer-style", wt)))
+    expect(res.status).toBe("ok")
+    expect(res.phase).toBe("review=completed")
 
     state = readStateSync(wt, CID)
     expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exempted")

@@ -963,6 +963,7 @@ describe("B7. computeRequiredDims 异常回退", () => {
     const state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     tg.phases.review.retryCount = 2
+    tg.phases.review.qualityBaselineDone = true
     tg.phases.review.quality.progress = {
       style: { submitted: false, passed: false },
       architecture: { submitted: false, passed: false },
@@ -988,6 +989,87 @@ describe("B7. computeRequiredDims 异常回退", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ════════════════════════════════════════════════════════════════
+//  Behavior 9: retryCount>0 但 baseline 未建 → 仍走 5 维全审（回归 bug: tool/task 驳回污染 retryCount）
+// ════════════════════════════════════════════════════════════════
+
+describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
+  test("retryCount=2, qualityBaselineDone=false → 全部 5 维可过 gate", async () => {
+    const root = `/tmp/optimize-b9a-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+
+    const { orch, arch, dev, toolR, taskR } = await setupThroughReviewReady(wt, fakeGit)
+
+    // 模拟 tool/task 已驳回 2 轮，quality 从未运行
+    let state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    tg.phases.review.retryCount = 2
+    // qualityBaselineDone 保持 false（新建状态本来就没有该字段，undefined→falsy）
+    writeFileSync(
+      join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
+      JSON.stringify(state, null, 2)
+    )
+
+    // 全部 5 维 reviewer 均应通过门禁
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
+    for (const dim of dims) {
+      const ctx = makeCtx(`openspec-reviewer-${dim}`, wt)
+      const view = await status.execute({}, ctx)
+      const str = typeof view === "string" ? view : JSON.stringify(view)
+      expect(str).toMatch(/✅ 当前轮到你执行/)
+    }
+
+    // 提交全部 5 维 → 基线建立，全部通过
+    for (let i = 0; i < dims.length; i++) {
+      const res = JSON.parse(await quality_review_submit.execute({
+        task_group_id: "1", passed: true, issues: [],
+      }, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
+      if (i < dims.length - 1) expect(res.status).toBe("partial")
+      else expect(res.status).toBe("ok")
+    }
+
+    state = readStateSync(wt, CID)
+    const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tgAfter.phases.review.qualityBaselineDone).toBe(true)
+    expect(tgAfter.phases.review.completed).toBe(true)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("retryCount=0, qualityBaselineDone=true → 空激活集", async () => {
+    const root = `/tmp/optimize-b9b-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+
+    const { orch, arch, dev, toolR, taskR } = await setupThroughReviewReady(wt, fakeGit)
+
+    // 模拟 quality 基线已完成，无 pending issue
+    let state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    tg.phases.review.qualityBaselineDone = true
+    tg.phases.review.retryCount = 0
+    writeFileSync(
+      join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
+      JSON.stringify(state, null, 2)
+    )
+
+    // 全部 5 维 reviewer 均不应通过门禁（无 pending issue）
+    const dims = ["style", "architecture", "performance", "security", "maintainability"]
+    for (const dim of dims) {
+      const ctx = makeCtx(`openspec-reviewer-${dim}`, wt)
+      const view = await status.execute({}, ctx)
+      const str = typeof view === "string" ? view : JSON.stringify(view)
+      expect(str).not.toMatch(/✅ 当前轮到你执行/)
+    }
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
 
 // ════════════════════════════════════════════════════════════════
 //  Behavior 8: 编排视图暴露 baseBranch

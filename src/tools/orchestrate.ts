@@ -769,8 +769,6 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
     if (atCheckpoint && !alreadyResolved) {
       checks.push(`- ⛔ 审查重试达到检查点（第 ${tg.phases.review.retryCount} 轮），需要用户决策。`)
       checks.push(`  唯一动作：调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`)
-    } else if (atCheckpoint && alreadyResolved) {
-      checks.push(`- ✅ 检查点已处理（第 ${tg.phases.review.retryCount} 轮后继续），审查正常推进中。`)
     }
   }
   if (checks.length > 0) {

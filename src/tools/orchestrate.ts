@@ -2639,3 +2639,32 @@ export const resolve_review = tool({
     )
   },
 })
+
+// ─── dashboard 只读投影 ───
+
+export async function readDashboardState(worktree: string) {
+  const state = await readStateByWorktree(worktree)
+  if (!state) return null
+
+  return {
+    active: true,
+    changeId: state.changeId,
+    currentTaskGroupId: state.taskGroupId,
+    baseBranch: state.baseBranch,
+    createdAt: state.createdAt,
+    updatedAt: state.updatedAt,
+    taskGroups: state.taskGroups.map((tg) => ({
+      id: tg.id,
+      name: tg.name,
+      taskCount: tg.taskCount,
+      status: tg.status,
+      lifecycle: deriveStatus(tg, state.taskGroupId),
+      worktreePath: tg.worktreePath,
+      branchName: tg.branchName,
+      relevantSpecs: tg.relevantSpecs,
+      phases: tg.phases,
+      tasks: tg.tasks,
+      issues: tg.issues,
+    })),
+  }
+}

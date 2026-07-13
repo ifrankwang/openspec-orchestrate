@@ -16,8 +16,6 @@ OpenCode 编排插件，实现 OpenSpec 四阶段工作流 + Review 三层门禁
 
 `task_analysis → dev_impl → review → completed`
 
-
-
 ### Review 三层门禁
 
 | 阶段 | 角色 | 职责 |
@@ -43,6 +41,10 @@ bun add @opencode-ai/openspec-orchestrate
 2. 编排者发起 `opx_orch_init` 初始化流程
 3. 四阶段自动化执行：task_analysis → dev_impl → review（三层门禁）→ completed
 
+### 编排看板
+
+插件加载时自动在 `http://127.0.0.1:4519` 启动编排进度看板。展示当前活跃 task group 的执行进度、Review 门禁状态、Task/Issue 明细。只读、2s 轮询刷新。端口被占用时自动递增探测。
+
 ## 命令
 
 | 命令 | 用途 |
@@ -54,19 +56,22 @@ bun add @opencode-ai/openspec-orchestrate
 
 ```
 src/
-  index.ts              — 插件入口（注册 11 个 opx_* 工具 + opx_skill）
-  tools/orchestrate.ts  — 全部编排逻辑（含 opx_tool_review_submit / opx_task_review_submit / opx_quality_review_submit）
+  index.ts              — 插件入口（注册 11 个 opx_* 工具 + opx_skill + 启动看板）
+  tools/orchestrate.ts  — 全部编排逻辑（含 readDashboardState 只读投影）
+  dashboard/            — 编排进度看板服务（server.ts + page.ts）
   agents/loader.ts      — 注入 agent 配置
   skills/tool.ts        — 加载内置 skill
   skills/loader.ts      — 注入 skill
 assets/
   agents/               — 10 个 agent MD 定义（含 tool/task/quality review）
   skills/               — 内置 skill 定义
+  dashboard/index.html  — 看板前端页面
 tests/                  — Bun test，100% fake-git 无外部依赖
 ```
 
 ## 核心特性
 
+- **编排进度看板**：插件加载时启动 HTTP 看板服务，实时展示阶段进度、Review 门禁状态、Task/Issue 明细（2s 轮询、只读）
 - **状态持久化**：按 changeId 拆分状态文件，current.json 指针追踪活跃变更
 - **Worktree 隔离**：`git worktree` 分支隔离，自动合并清理
 - **执行边界**：架构师限定 developer 的目录和包范围，reviewer 新报 issue 自动扩展

@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>编排进度看板</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root {
+  --bg: #f6f8fa;
+  --surface: #fff;
+  --surface-hover: #f3f4f6;
+  --border: #d0d7de;
+  --border-bright: #8b949e;
+  --text: #1f2328;
+  --text-dim: #656d76;
+  --text-muted: #959da5;
+  --green: #2da44e; --green-bg: rgba(45,164,78,0.1);
+  --blue: #0969da; --blue-bg: rgba(9,105,218,0.1);
+  --yellow: #9a6700; --yellow-bg: rgba(154,103,0,0.1);
+  --red: #cf222e; --red-bg: rgba(207,34,46,0.08);
+  --orange: #bf4c17; --orange-bg: rgba(191,76,23,0.1);
+  --purple: #8250df; --purple-bg: rgba(130,80,223,0.1);
+  --gray: #6e7681; --gray-bg: rgba(110,118,129,0.08);
+  --radius: 8px; --radius-sm: 4px;
+  --mono: 'SF Mono','JetBrains Mono','Fira Code',monospace;
+  --sans: -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;background:var(--bg);color:var(--text)}
+body{font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:24px;max-width:1200px;margin:0 auto;min-height:100vh}
+code,.mono{font-family:var(--mono)}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+.header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.header-title{font-size:15px;font-weight:600}
+.header-title .ident{color:var(--blue);font-weight:400;font-size:13px;font-family:var(--mono);margin-left:2px}
+.header-meta{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--text-dim)}
+.poll-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.icon-step{width:22px;height:22px}.icon-fill{fill:currentColor;stroke:currentColor;stroke-width:2}
+.icon-gate{width:14px;height:14px}.icon-badge{width:12px;height:12px}
+.icon-dot{width:10px;height:10px}.icon-meta{width:12px;height:12px;vertical-align:-2px;stroke-width:2.5}
+
+.progress{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.progress-title{font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:10px;letter-spacing:.5px}
+.progress-steps{display:flex;flex-direction:column;gap:0}
+.pstep{display:flex;align-items:flex-start;gap:10px;padding:6px 0;position:relative;min-height:34px}
+.pstep::before{content:'';position:absolute;left:10px;top:28px;bottom:-6px;width:2px;background:var(--border)}
+.pstep:last-child::before{display:none}
+.pstep-icon{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;position:relative;z-index:1;margin-top:2px}
+.pstep-icon.done{color:var(--green)}
+.pstep-icon.active{color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg);border-radius:50%}
+.pstep-icon.pending{color:var(--text-muted)}
+.pstep-body{flex:1;min-width:0}
+.pstep-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.pstep-title .step-tag{font-size:10px;font-weight:400;color:var(--text-muted);font-family:var(--mono);background:var(--gray-bg);padding:0 5px;border-radius:3px}
+.pstep-meta{font-size:12px;color:var(--text-dim);line-height:1.6}
+.pstep-meta code{font-size:11px;background:var(--gray-bg);padding:0 5px;border-radius:3px;color:var(--text);word-break:break-all}
+
+.review-gates{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.rgate{display:flex;align-items:center;gap:3px;padding:3px 8px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;font-family:var(--sans)}
+.rgate.pass{background:var(--green-bg);color:var(--green)}
+.rgate.busy{background:var(--blue-bg);color:var(--blue)}
+.rgate.wait{background:var(--gray-bg);color:var(--text-dim)}
+.quality-dims{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:4px;padding-left:2px}
+.qdim{font-size:11px;padding:1px 6px;border-radius:3px;font-weight:500;font-family:var(--sans);display:flex;align-items:center;gap:3px}
+.qdim.pass{color:var(--green)}.qdim.busy{color:var(--blue)}.qdim.wait{color:var(--text-muted)}
+.retry-badge{font-size:11px;color:var(--text-muted);padding:2px 7px;background:var(--gray-bg);border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:3px;font-family:var(--sans)}
+
+.columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.column{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-height:380px;max-height:calc(100vh - 300px);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+
+.tabs{display:flex;gap:1px;padding:10px 14px 0;overflow-x:auto;flex-shrink:0;border-bottom:1px solid var(--border)}
+.tab{padding:5px 9px 7px;font-size:12px;cursor:pointer;color:var(--text-dim);font-weight:500;white-space:nowrap;background:transparent;border:none;border-bottom:2px solid transparent;font-family:var(--sans);transition:all .15s;display:flex;align-items:center;gap:3px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;font-size:10px;border-radius:3px;background:var(--border);color:var(--text-muted);line-height:1}
+.tab.active .tab-count{background:var(--blue-bg);color:var(--blue)}
+.tab-hidden{display:none}
+
+.card-list{padding:12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
+.empty-state{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px}
+.loading-state{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px}
+
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;transition:border .15s}
+.card:hover{border-color:var(--border-bright)}
+
+.card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.card-hl{display:flex;align-items:center;flex-wrap:wrap;gap:5px;flex:1;min-width:0}
+.card-hr{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.card-id{font-size:11px;font-weight:500;color:var(--text-muted);font-family:var(--mono);flex-shrink:0}
+.card-task-title{font-size:13px;font-weight:600;color:var(--text);line-height:1.35;word-break:break-word;flex:1;min-width:120px}
+.card-sev{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;line-height:1.3;font-family:var(--sans)}
+.card-sev.critical{background:var(--red-bg);color:var(--red)}
+.card-sev.high{background:var(--orange-bg);color:var(--orange)}
+.card-sev.medium{background:var(--yellow-bg);color:var(--yellow)}
+.card-sev.low{background:var(--green-bg);color:var(--green)}
+.card-sev.info{background:var(--gray-bg);color:var(--gray)}
+.card-dim{display:inline-flex;align-items:center;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;line-height:1.3;color:var(--purple);background:var(--purple-bg);font-family:var(--sans)}
+.card-file{font-size:11px;font-family:var(--mono);color:var(--text-dim);word-break:break-all;line-height:1.35;margin-top:3px;flex-basis:100%}
+.card-sb{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;line-height:1.3;white-space:nowrap;font-family:var(--sans)}
+.card-sb.open{background:var(--blue-bg);color:var(--blue)}
+.card-sb.submitted{background:var(--yellow-bg);color:var(--yellow)}
+.card-sb.rejected{background:var(--red-bg);color:var(--red)}
+.card-sb.verified{background:var(--green-bg);color:var(--green)}
+.card-sb.skipped{background:var(--gray-bg);color:var(--text-muted)}
+.card-sb.exemption{background:var(--orange-bg);color:var(--orange)}
+.card-sb.exempted{background:var(--gray-bg);color:var(--text-muted)}
+.card-meta-tag{display:inline-flex;align-items:center;gap:2px;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;line-height:1.3}
+.card-meta-tag.refix{color:var(--red);background:rgba(207,34,46,0.1)}
+.card-meta-tag.known{color:var(--yellow);background:var(--yellow-bg)}
+.card-divider{height:1px;background:var(--border);margin:8px 0 6px;border:none;flex-basis:100%}
+.card-body{font-size:12px}
+.card-row{display:flex;gap:4px;margin-top:3px}
+.card-row:first-child{margin-top:0}
+.card-k{color:var(--text);font-weight:600;font-family:var(--sans);white-space:nowrap;min-width:32px;flex-shrink:0}
+.card-v{color:var(--text-dim);font-family:var(--mono);word-break:break-word;line-height:1.5}
+.card-v.msg{font-family:var(--sans)}
+
+@media(max-width:800px){.columns{grid-template-columns:1fr}.column{min-height:280px;max-height:50vh}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">编排进度看板 <span class="ident" id="changeId"></span></div>
+  <div class="header-meta">
+    <span class="poll-dot" id="pollDot"></span>
+    <span id="pollLabel">轮询 2s</span>
+    <span style="color:var(--border)">|</span>
+    <span id="baseInfo"></span>
+    <span style="color:var(--border)">|</span>
+    <span id="updateTime"></span>
+  </div>
+</div>
+
+<div class="progress" id="progressSection">
+  <div class="progress-title">执  行  进  度</div>
+  <div class="progress-steps" id="progressSteps"></div>
+</div>
+
+<div class="columns" id="columns">
+  <div class="column">
+    <div class="tabs" id="taskTabs"></div>
+    <div class="card-list" id="taskList"></div>
+  </div>
+  <div class="column">
+    <div class="tabs" id="issueTabs"></div>
+    <div class="card-list" id="issueList"></div>
+  </div>
+</div>
+
+<script>
+// ─── config ───
+const PHASE_STEPS = [
+  { key: 'task_analysis',  label: '\u9700\u6c42\u5206\u6790', tag: 'architect review', gate: false },
+  { key: 'dev_impl',       label: '\u5f00\u53d1\u5b9e\u65bd', tag: 'dev_impl',         gate: false },
+  { key: 'review',         label: '\u5ba1\u67e5',             tag: 'review',           gate: true  },
+  { key: 'completed',      label: '\u5df2\u5b8c\u6210',       tag: 'completed',        gate: false },
+]
+
+const taskStatusLabels = {open:'\u5f85\u5904\u7406',submitted:'\u5f85\u9a8c\u8bc1',rejected:'\u5df2\u9a73\u56de',verified:'\u5df2\u9a8c\u8bc1',skipped:'\u5df2\u8df3\u8fc7'}
+const issueStatusLabels = {open:'\u5f85\u5904\u7406',submitted:'\u5f85\u9a8c\u8bc1',rejected:'\u5df2\u9a73\u56de',verified:'\u5df2\u9a8c\u8bc1',exemption:'\u8042\u514d\u7533\u8bf7',exempted:'\u5df2\u8042\u514d'}
+const severityLabels = {Critical:'\u4e25\u91cd',High:'\u9ad8\u5371',Medium:'\u4e2d\u5371',Low:'\u4f4e\u5371',Info:'\u63d0\u793a'}
+const dimLabels = {security:'\u5b89\u5168',performance:'\u6027\u80fd',style:'\u98ce\u683c',architecture:'\u67b6\u6784',maintainability:'\u53ef\u7ef4\u62a4'}
+const badgeIcons = {open:'circle',submitted:'clock',rejected:'x',verified:'check',skipped:'skip-forward',exemption:'help-circle',exempted:'check'}
+const DIM_KEYS = ['style','architecture','performance','security','maintainability']
+const taskStatusOrder = ['open','submitted','rejected','verified','skipped']
+const issueStatusOrder = ['open','submitted','rejected','exemption','exempted','verified']
+
+let taskTab = 'all', issueTab = 'all', state = null, pollTimer = null
+
+// ─── helpers ───
+function st(s) { return s ? s.toString() : '' }
+function phaseIdx(p) { return PHASE_STEPS.findIndex(s => s.key === p) }
+
+function renderPhase(tg) {
+  const cur = phaseIdx(tg.status)
+  const arcDone = tg.phases.architect_review.completed
+  const devDone = tg.phases.dev_impl.completed
+  const revDone = tg.phases.review.completed
+  const isComp = tg.status === 'completed'
+
+  // step states: 0=pending,1=active,2=done
+  function stepState(i) {
+    if (i === 0) return arcDone ? 2 : (cur === 0 ? 1 : 0)
+    if (i === 1) {
+      if (tg.lifecycle === 'not_started') return 0
+      if (isComp || devDone) return 2
+      return cur === 1 ? 1 : (cur > 1 ? 2 : 0)
+    }
+    if (i === 2) {
+      if (revDone) return 2
+      if (cur === 2) return 1
+      if (isComp || cur > 2) return 2
+      return 0
+    }
+    if (i === 3) return isComp ? 2 : 0
+    return 0
+  }
+
+  return PHASE_STEPS.map((s, i) => {
+    const ss = stepState(i)
+    const cls = ss === 2 ? 'done' : ss === 1 ? 'active' : 'pending'
+    const icon = ss === 2 ? '<i data-lucide="check-circle-2" class="icon-step icon-fill"></i>'
+      : ss === 1 ? '<i data-lucide="circle" class="icon-step icon-fill"></i>'
+      : '<i data-lucide="circle-dashed" class="icon-step"></i>'
+
+    let meta = ''
+    if (i === 0 && ss === 2) meta = '<div class="pstep-meta">架构师已复核通过</div>'
+    if (i === 1 && (ss === 1 || ss === 2)) {
+      const parts = []
+      if (tg.worktreePath) parts.push('<i data-lucide="git-branch" class="icon-meta"></i> <code>' + tg.worktreePath + '</code>')
+      if (tg.branchName) parts.push('<code>' + tg.branchName + '</code>')
+      if (parts.length) meta = '<div class="pstep-meta">' + parts.join(' <span style="color:var(--text-muted)">\u00b7</span> ') + '</div>'
+    }
+
+    let gateHtml = ''
+    if (s.gate && ss > 0) {
+      const r = tg.phases.review
+      const toolDone = r.tool.completed
+      const taskDone = r.task.completed
+      const qualityDone = r.quality.completed
+
+      const gateCls = (d) => d ? 'pass' : (ss === 1 ? 'wait' : 'pass')
+      const gateIcon = (d) => d ? '<i data-lucide="check" class="icon-gate"></i>' : '<i data-lucide="clock" class="icon-gate"></i>'
+
+      gateHtml += '<div class="review-gates">' + [
+        '<span class="rgate ' + gateCls(toolDone) + '">' + gateIcon(toolDone) + ' tool review</span>',
+        '<span class="rgate ' + gateCls(taskDone) + '">' + gateIcon(taskDone) + ' task review</span>',
+        '<span class="rgate ' + gateCls(qualityDone) + '">' + gateIcon(qualityDone) + ' quality review</span>',
+      ].join('') + '</div>'
+
+      if (r.retryCount > 0) {
+        gateHtml = gateHtml.replace('review', 'review <span class="retry-badge"><i data-lucide="refresh-cw" class="icon-meta"></i> \u91cd\u8bd5 ' + r.retryCount + '/3</span>')
+      }
+
+      if (!qualityDone || ss === 1) {
+        const dims = DIM_KEYS.map(k => {
+          const p = r.quality.progress[k]
+          if (!p) return '<span class="qdim wait"><i data-lucide="circle-dashed" class="icon-dot"></i> ' + dimLabels[k] + '</span>'
+          if (p.passed) return '<span class="qdim pass"><i data-lucide="check" class="icon-dot"></i> ' + dimLabels[k] + '</span>'
+          if (p.submitted) return '<span class="qdim busy"><i data-lucide="circle" class="icon-dot icon-fill"></i> ' + dimLabels[k] + '</span>'
+          return '<span class="qdim wait"><i data-lucide="circle-dashed" class="icon-dot"></i> ' + dimLabels[k] + '</span>'
+        }).join('')
+        gateHtml += '<div class="quality-dims">' + dims + '</div>'
+      }
+    }
+
+    return '<div class="pstep"><div class="pstep-icon ' + cls + '">' + icon + '</div><div class="pstep-body"><div class="pstep-title">' + s.label + ' <span class="step-tag">' + s.tag + '</span></div>' + meta + gateHtml + '</div></div>'
+  }).join('')
+}
+
+function renderEmpty() {
+  document.getElementById('changeId').textContent = ''
+  document.getElementById('baseInfo').textContent = ''
+  document.getElementById('updateTime').textContent = ''
+  document.getElementById('progressSteps').innerHTML = '<div class="pstep"><div class="pstep-body"><div class="empty-state" style="padding:32px 0">\u6682\u65e0\u6d3b\u8dc3\u7f16\u6392\u4f1a\u8bdd</div></div></div>'
+  document.getElementById('taskTabs').innerHTML = ''
+  document.getElementById('taskList').innerHTML = ''
+  document.getElementById('issueTabs').innerHTML = ''
+  document.getElementById('issueList').innerHTML = ''
+}
+
+function renderHeader(tg) {
+  document.getElementById('changeId').textContent = state.changeId
+  document.getElementById('baseInfo').textContent = 'base: ' + (state.baseBranch || '-')
+  document.getElementById('updateTime').textContent = '\u66f4\u65b0 ' + (state.updatedAt ? new Date(state.updatedAt).toLocaleTimeString() : '-')
+}
+
+function renderHeaderEmpty() {
+  document.getElementById('changeId').textContent = ''
+  document.getElementById('baseInfo').textContent = ''
+  document.getElementById('updateTime').textContent = ''
+}
+
+// ─── tab + card rendering ───
+function statusCount(arr, s) { return arr.filter(function(i) { return i.status === s }).length }
+
+function renderTabs(containerId, items, statuses, kind, current, labels) {
+  var el = document.getElementById(containerId)
+  var total = items.length
+  var html = '<button class="tab' + (current === 'all' ? ' active' : '') + '" data-tab="all" data-kind="' + kind + '">\u5168\u90e8 <span class="tab-count">' + total + '</span></button>'
+  for (var si = 0; si < statuses.length; si++) {
+    var s = statuses[si]
+    var c = statusCount(items, s)
+    if (c === 0) continue
+    html += '<button class="tab' + (current === s ? ' active' : '') + '" data-tab="' + s + '" data-kind="' + kind + '">' + (labels[s] || s) + ' <span class="tab-count">' + c + '</span></button>'
+  }
+  el.innerHTML = html
+}
+
+function renderTaskCards(tasks, filter) {
+  var el = document.getElementById('taskList')
+  var filtered = filter === 'all' ? tasks : tasks.filter(function(t) { return t.status === filter })
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state">\u6682\u65e0 ' + (filter === 'all' ? '' : (taskStatusLabels[filter] || filter)) + ' \u7684 Task</div>'
+    if (typeof lucide !== 'undefined') lucide.createIcons()
+    return
+  }
+  var html = ''
+  for (var i = 0; i < filtered.length; i++) {
+    var t = filtered[i]
+    var label = taskStatusLabels[t.status] || t.status
+    var rej = t.status === 'rejected' && t.rejectReason
+    html += '<div class="card"><div class="card-header">'
+      + '<div class="card-hl">'
+      + '<span class="card-id">#' + t.id + '</span>'
+      + '<span class="card-task-title">' + t.title + '</span>'
+      + '</div>'
+      + '<span class="card-sb ' + t.status + '">' + label + '</span>'
+      + '</div>'
+      + '<div class="card-divider"></div>'
+      + '<div class="card-body">'
+      + '<div class="card-row"><span class="card-k">\u7f16\u53f7</span><span class="card-v">' + t.taskNumber + '</span></div>'
+      + '<div class="card-row"><span class="card-k">\u5f15\u7528</span><span class="card-v">' + t.tasksMdRef + '</span></div>'
+      + '<div class="card-row"><span class="card-k">\u6eaf\u6e90</span><span class="card-v">' + t.specTrace + '</span></div>'
+      + (rej ? '<div class="card-row"><span class="card-k">\u9a73\u56de</span><span class="card-v msg" style="color:var(--red)">' + t.rejectReason + '</span></div>' : '')
+      + '</div></div>'
+  }
+  el.innerHTML = html
+  if (typeof lucide !== 'undefined') lucide.createIcons()
+}
+
+function renderIssueCards(issues, filter) {
+  var el = document.getElementById('issueList')
+  var filtered = filter === 'all' ? issues : issues.filter(function(i) { return i.status === filter })
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state">\u6682\u65e0 ' + (filter === 'all' ? '' : (issueStatusLabels[filter] || filter)) + ' \u7684 Issue</div>'
+    if (typeof lucide !== 'undefined') lucide.createIcons()
+    return
+  }
+  var sevOrder = {Critical:0,High:1,Medium:2,Low:3,Info:4}
+  filtered.sort(function(a,b) { return (sevOrder[a.severity]||5)-(sevOrder[b.severity]||5) })
+  var html = ''
+  for (var i = 0; i < filtered.length; i++) {
+    var issue = filtered[i]
+    var sevCls = issue.severity.toLowerCase()
+    var sevLabel = severityLabels[issue.severity] || issue.severity
+    var dimLabel = dimLabels[issue.dimension] || issue.dimension
+    var statusLabel = issueStatusLabels[issue.status] || issue.status
+    var refix = issue.refixCount > 0 ? '<span class="card-meta-tag refix">\u00d7' + issue.refixCount + '</span>' : ''
+    var known = issue.isKnownIssue ? '<span class="card-meta-tag known"><i data-lucide="check" class="icon-badge"></i> \u5df2\u77e5</span>' : ''
+    html += '<div class="card"><div class="card-header">'
+      + '<div class="card-hl">'
+      + '<span class="card-id">#' + issue.id + '</span>'
+      + '<span class="card-sev ' + sevCls + '">' + sevLabel + '</span>'
+      + '<span class="card-dim">' + dimLabel + '</span>'
+      + '<span class="card-file">' + issue.file + ':' + issue.line + '</span>'
+      + '</div>'
+      + '<div class="card-hr">'
+      + '<span class="card-sb ' + issue.status + '">' + statusLabel + '</span>'
+      + refix + known
+      + '</div>'
+      + '</div>'
+      + '<div class="card-divider"></div>'
+      + '<div class="card-body">'
+      + '<div class="card-row"><span class="card-k">\u63cf\u8ff0</span><span class="card-v msg">' + issue.description + '</span></div>'
+      + (issue.suggestion ? '<div class="card-row"><span class="card-k">\u5efa\u8bae</span><span class="card-v msg">' + issue.suggestion + '</span></div>' : '')
+      + (issue.type ? '<div class="card-row"><span class="card-k">\u7c7b\u578b</span><span class="card-v">' + issue.type + '</span></div>' : '')
+      + (issue.rootCauseGuess ? '<div class="card-row"><span class="card-k">\u6839\u56e0</span><span class="card-v msg">' + issue.rootCauseGuess + '</span></div>' : '')
+      + (issue.status === 'rejected' && issue.rejectReason ? '<div class="card-row"><span class="card-k">\u9a73\u56de</span><span class="card-v msg" style="color:var(--red)">' + issue.rejectReason + '</span></div>' : '')
+      + ((issue.status === 'exemption' || issue.status === 'exempted') && issue.exemptReason ? '<div class="card-row"><span class="card-k">\u8c41\u514d</span><span class="card-v msg" style="color:var(--orange)">' + issue.exemptReason + '</span></div>' : '')
+      + '</div></div>'
+  }
+  el.innerHTML = html
+  if (typeof lucide !== 'undefined') lucide.createIcons()
+}
+
+function renderCards() {
+  if (!state || !state.active || !state.taskGroups.length) {
+    document.getElementById('taskTabs').innerHTML = ''
+    document.getElementById('taskList').innerHTML = ''
+    document.getElementById('issueTabs').innerHTML = ''
+    document.getElementById('issueList').innerHTML = ''
+    return
+  }
+  var tg = state.taskGroups[0]
+  var tasks = tg.tasks || []
+  var issues = tg.issues || []
+  renderTabs('taskTabs', tasks, taskStatusOrder, 'task', taskTab, taskStatusLabels)
+  renderTabs('issueTabs', issues, issueStatusOrder, 'issue', issueTab, issueStatusLabels)
+  renderTaskCards(tasks, taskTab)
+  renderIssueCards(issues, issueTab)
+}
+
+// ─── main render ───
+function renderAll() {
+  if (!state || !state.active) {
+    renderEmpty()
+    document.getElementById('pollDot').style.background = 'var(--text-muted)'
+    document.getElementById('pollLabel').textContent = '\u6ca1\u6709\u6d3b\u8dc3\u4f1a\u8bdd'
+    if (typeof lucide !== 'undefined') lucide.createIcons()
+    return
+  }
+
+  document.getElementById('pollDot').style.background = 'var(--green)'
+  document.getElementById('pollLabel').textContent = '\u8f6e\u8be2 2s'
+
+  var tg = state.taskGroups && state.taskGroups.length > 0 ? state.taskGroups[0] : null
+  if (!tg) {
+    renderEmpty()
+    if (typeof lucide !== 'undefined') lucide.createIcons()
+    return
+  }
+
+  renderHeader(tg)
+  document.getElementById('progressSteps').innerHTML = renderPhase(tg)
+  renderCards()
+  if (typeof lucide !== 'undefined') lucide.createIcons()
+}
+
+// ─── fetch ───
+function fetchState() {
+  fetch('/api/state')
+    .then(function(r) { return r.json() })
+    .then(function(d) {
+      state = d
+      renderAll()
+    })
+    .catch(function() {
+      state = null
+      renderEmpty()
+    })
+}
+
+// ─── event delegation ───
+document.addEventListener('click', function(e) {
+  var tab = e.target.closest('.tab')
+  if (!tab) return
+  var kind = tab.dataset.kind
+  var t = tab.dataset.tab
+  if (kind === 'task') { taskTab = t; renderAll() }
+  else { issueTab = t; renderAll() }
+})
+
+// ─── init ───
+renderAll()
+fetchState()
+setInterval(fetchState, 2000)
+</script>
+</body>
+</html>

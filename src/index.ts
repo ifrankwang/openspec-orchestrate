@@ -2,6 +2,7 @@ import { type Plugin, tool } from "@opencode-ai/plugin"
 import { loadSkillBody } from "./skills/tool.js"
 import { injectSkills } from "./skills/loader.js"
 import { injectAgents } from "./agents/loader.js"
+import { startDashboard } from "./dashboard/server.js"
 
 import {
   init,
@@ -16,7 +17,12 @@ import {
   resolve_review,
 } from "./tools/orchestrate.js"
 
-export const OpenspecOrchestratePlugin: Plugin = async () => {
+export const OpenspecOrchestratePlugin: Plugin = async (input) => {
+  // 启动编排进度看板（非阻塞，失败不影响工具注册）
+  try {
+    if (input?.worktree) startDashboard(input.worktree)
+  } catch { /* dashboard 启动失败不影响编排功能 */ }
+
   return {
     config: async (config) => {
       injectAgents(config)

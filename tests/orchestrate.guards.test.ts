@@ -186,7 +186,7 @@ describe("G4. assertPassWithIssues 守卫", () => {
     await expect(
       arch_submit.execute({
         task_group_id: "1", passed: true, issues: [
-          { file: "d.md", line: 1, type: "缺失", severity: "Medium", description: "Missing", suggestion: "Add" },
+          { file: "d.md", line: 1, severity: "Medium", description: "Missing", suggestion: "Add" },
         ],
       }, a)
     ).rejects.toThrow(/passed.*true.*issues/)

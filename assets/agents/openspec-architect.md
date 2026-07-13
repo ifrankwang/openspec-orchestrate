@@ -92,7 +92,6 @@ permission:
     {
       "file": "<相对路径>",
       "line": <行号>,
-      "type": "<不一致|缺失|冲突|模糊|其他>",
       "severity": "High",
       "description": "<问题描述>",
       "suggestion": "<修改建议>"

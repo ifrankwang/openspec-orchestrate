@@ -60,8 +60,8 @@ const mockState = {
         { id: "2", title: "单元测试", taskNumber: "1.2", tasksMdRef: "tasks.md#1.2", specTrace: "spec.md", status: "verified", rejectReason: null },
       ],
       issues: [
-        { id: "10", dimension: "security", severity: "Critical", file: "Auth.java", line: 12, description: "SQL 注入", suggestion: "用参数化", type: null, rootCauseGuess: "直接拼 SQL", status: "open", refixCount: 1, rejectReason: null, exemptReason: null, sourcePhase: "quality" },
-        { id: "11", dimension: "style", severity: "Info", file: "Config.java", line: 3, description: "命名不规范", suggestion: null, type: null, rootCauseGuess: null, status: "verified", refixCount: 0, rejectReason: null, exemptReason: null, sourcePhase: "tool" },
+        { id: "10", dimension: "security", severity: "Critical", file: "Auth.java", line: 12, description: "SQL 注入", suggestion: "用参数化", rootCauseGuess: "直接拼 SQL", status: "open", refixCount: 1, rejectReason: null, exemptReason: null, sourcePhase: "quality" },
+        { id: "11", dimension: "style", severity: "Info", file: "Config.java", line: 3, description: "命名不规范", suggestion: null, rootCauseGuess: null, status: "verified", refixCount: 0, rejectReason: null, exemptReason: null, sourcePhase: "tool" },
       ],
     },
   ],

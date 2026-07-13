@@ -58,7 +58,6 @@ type Dimension = ReviewDimension
 const architectIssue = tool.schema.object({
   file: tool.schema.string().min(1).describe("问题所在文件路径（相对于 worktree）"),
   line: tool.schema.number().int().positive().describe("问题所在行号"),
-  type: tool.schema.enum(["不一致", "缺失", "冲突", "模糊", "其他"]).describe("问题类型（文档一致性问题分类）"),
   severity: tool.schema.enum(SEVERITY_LEVELS).describe("严重级别（Critical/High/Medium/Low/Info）"),
   description: tool.schema.string().min(1).describe("问题描述"),
   suggestion: tool.schema.string().optional().describe("修改建议"),
@@ -75,8 +74,6 @@ const boundaryExpansionSchema = tool.schema.object({
   allowed_packages: tool.schema.array(tool.schema.string().min(1)).optional().describe("reviewer 声明的额外允许包路径"),
 })
 
-const TEST_ISSUE_TYPES = ["断言放水", "边界缺失", "Mock过度", "覆盖不足", "其他"] as const
-
 const reviewIssue = tool.schema.object({
   severity: tool.schema.enum(SEVERITY_LEVELS).describe("严重级别（Critical/High/Medium/Low/Info）"),
   file: tool.schema.string().min(1).describe("问题所在文件路径（相对于 worktree）"),
@@ -86,10 +83,6 @@ const reviewIssue = tool.schema.object({
     .string()
     .optional()
     .describe("修复建议"),
-  type: tool.schema
-    .enum(TEST_ISSUE_TYPES)
-    .optional()
-    .describe("问题类型枚举（仅特定维度需要）"),
   root_cause_guess: tool.schema
     .string()
     .optional()
@@ -135,7 +128,6 @@ interface IssueItem {
   suggestion: string
   status: IssueStatus
   refixCount: number
-  type: string | null
   rootCauseGuess: string | null
   exemptReason: string | null
   rejectReason: string | null
@@ -1960,7 +1952,6 @@ function deduplicateAndAddIssues(
       suggestion: iss.suggestion || "",
       status: "open" as const,
       refixCount: 0,
-      type: null,
       rootCauseGuess: null,
       exemptReason: null,
       rejectReason: null,

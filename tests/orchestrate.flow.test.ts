@@ -322,7 +322,7 @@ describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
 
     const r1 = JSON.parse(await arch_submit.execute({
       task_group_id: "1", passed: false,
-      issues: [{ file: "design.md", line: 5, type: "缺失", severity: "Medium", description: "Missing error handling section", suggestion: "Add error handling" }],
+      issues: [{ file: "design.md", line: 5, severity: "Medium", description: "Missing error handling section", suggestion: "Add error handling" }],
     }, a))
     expect(r1.status).toBe("blocked")
     expect(r1.phase).toBe("architect_review")

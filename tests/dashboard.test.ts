@@ -56,8 +56,8 @@ const mockState = {
         },
       },
       tasks: [
-        { id: "1", title: "登录接口", taskNumber: "1.1", tasksMdRef: "tasks.md#1.1", specTrace: "spec.md", status: "open", rejectReason: null },
-        { id: "2", title: "单元测试", taskNumber: "1.2", tasksMdRef: "tasks.md#1.2", specTrace: "spec.md", status: "verified", rejectReason: null },
+        { id: "1", title: "登录接口", taskNumber: "1.1", specTrace: "spec.md", status: "open", rejectReason: null },
+        { id: "2", title: "单元测试", taskNumber: "1.2", specTrace: "spec.md", status: "verified", rejectReason: null },
       ],
       issues: [
         { id: "10", dimension: "security", severity: "Critical", file: "Auth.java", line: 12, description: "SQL 注入", suggestion: "用参数化", rootCauseGuess: "直接拼 SQL", status: "open", refixCount: 1, rejectReason: null, exemptReason: null, sourcePhase: "quality" },

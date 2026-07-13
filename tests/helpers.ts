@@ -1,6 +1,6 @@
 import { __setGitRunner, type GitRunner } from "../src/tools/orchestrate"
 import type { ToolContext } from "@opencode-ai/plugin"
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs"
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, cpSync } from "node:fs"
 import { join } from "node:path"
 
 // ─── Fake Git ───
@@ -29,10 +29,15 @@ export class FakeGitRunner implements GitRunner {
       if (rest[0] === "add") {
         const branchIdx = rest.indexOf("-b")
         const branch = branchIdx >= 0 ? rest[branchIdx + 1] : ""
-        const wtPath = rest[rest.length - 1]
+        const wtPath = branchIdx >= 0 ? rest[branchIdx + 2] : ""
         if (branch && wtPath) {
           this.worktrees.set(wtPath, { branch, path: wtPath })
           mkdirSync(wtPath, { recursive: true })
+          const srcOpenspec = join(worktree, "openspec")
+          const destOpenspec = join(wtPath, "openspec")
+          if (existsSync(srcOpenspec)) {
+            cpSync(srcOpenspec, destOpenspec, { recursive: true })
+          }
         }
         return ""
       }

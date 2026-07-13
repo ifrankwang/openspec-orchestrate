@@ -813,8 +813,10 @@ describe("G19. task_review_submit 同步 tasks.md 复选框", () => {
 
     await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
 
-    // 验证提交前 tasks.md 为 [ ]
-    const tasksMdPath = join(wt, "openspec", "changes", CID, "tasks.md")
+    // 验证提交前 worktree 中 tasks.md 为 [ ]
+    const state2 = readStateSync(wt, CID)
+    const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
+    const tasksMdPath = join(tg2.worktreePath, "openspec", "changes", CID, "tasks.md")
     const before = readFileSync(tasksMdPath, "utf-8")
     expect(before).toContain("- [ ] 1.1 T1")
     expect(before).toContain("- [ ] 1.2 T2")
@@ -824,12 +826,54 @@ describe("G19. task_review_submit 同步 tasks.md 复选框", () => {
       verified_task_ids: ["1", "2"], failed_task_ids: [],
       fixed_issue_ids: []}, taskR)
 
-    // 验证 tasks.md 复选框已同步
+    // 验证 worktree 中 tasks.md 复选框已同步
     const after = readFileSync(tasksMdPath, "utf-8")
     expect(after).toContain("- [x] 1.1 T1")
     expect(after).toContain("- [x] 1.2 T2")
     expect(after).not.toContain("- [ ] 1.1 T1")
     expect(after).not.toContain("- [ ] 1.2 T2")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("partially failed → passed=false → no checkbox marking", async () => {
+    const root = `/tmp/guard-g19-negative-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    fakeGit.diffs.set(wt, ["src/T.java"])
+    await dev_submit.execute({}, d)
+
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, o)
+
+    await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    // 提交 task review，1 verified 1 failed → passed=false
+    await task_review_submit.execute({ passed: false,
+      verified_task_ids: ["1"], failed_task_ids: [{ task_id: "2", reason: "not working" }],
+      fixed_issue_ids: []}, taskR)
+
+    // 验证 tasks.md 在 worktree 中未被标记
+    const stateAfter = readStateSync(wt, CID)
+    const tgAfter = stateAfter.taskGroups.find((g: any) => g.id === "1")
+    const tasksMdPath = join(tgAfter.worktreePath, "openspec", "changes", CID, "tasks.md")
+    const content = readFileSync(tasksMdPath, "utf-8")
+    expect(content).toContain("- [ ] 1.1 T1")
+    expect(content).toContain("- [ ] 1.2 T2")
+    expect(content).not.toContain("- [x]")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

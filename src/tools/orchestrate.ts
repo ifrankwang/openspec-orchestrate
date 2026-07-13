@@ -111,7 +111,6 @@ type IssueStatus = typeof ISSUE_STATUSES[number]
 
 interface TaskItem {
   id: string
-  tasksMdRef: string
   specTrace: string
   title: string
   status: TaskStatus
@@ -337,7 +336,6 @@ const AGENT_TO_SUBMIT_TOOL: Record<string, string> = {
 interface ParsedTask {
   title: string
   specTrace: string
-  tasksMdRef: string
   taskNumber: string
 }
 
@@ -377,7 +375,7 @@ async function parseTasksMdForGroup(
           .replace(/\s*\[spec:[^\]]+\]\s*$/, "")
           .trim()
         const specTrace = parseSpecTrace(body)
-        tasks.push({ title: cleaned, specTrace, tasksMdRef: `line-${i + 1}`, taskNumber })
+        tasks.push({ title: cleaned, specTrace, taskNumber })
       }
     }
   } catch {
@@ -538,39 +536,41 @@ async function runGitChecked(
   return gitRunner.runChecked(worktree, args)
 }
 
-// 回写 tasks.md：将已 verified task 所在行的 [ ] 改为 [x]，并 commmit
-async function updateTasksMdForVerifiedTasks(
+// 标记整个 task group 复选框为 [x]
+async function markTaskGroupCheckboxesComplete(
   worktree: string,
   changeId: string,
-  tasks: TaskItem[],
-  verifiedIds: string[]
+  taskGroupId: string
 ): Promise<void> {
-  if (verifiedIds.length === 0) return
   const tasksMdPath = path.join(worktree, "openspec", "changes", changeId, "tasks.md")
   const f = Bun.file(tasksMdPath)
   if (!(await f.exists())) return
   const content = await f.text()
   const lines = content.split("\n")
+  let inGroup = false
   let modified = false
-  for (const id of verifiedIds) {
-    const task = tasks.find((t) => t.id === id)
-    if (!task || !task.tasksMdRef) continue
-    const lineMatch = task.tasksMdRef.match(/^line-(\d+)$/)
-    if (!lineMatch) continue
-    const lineNum = parseInt(lineMatch[1], 10) - 1
-    if (lineNum < 0 || lineNum >= lines.length) continue
-    if (/^-\s+\[\s\]\s+/.test(lines[lineNum])) {
-      lines[lineNum] = lines[lineNum].replace(/^(-\s+)\[\s\](\s+)/, "$1[x]$2")
+  const result: string[] = []
+  for (const line of lines) {
+    const groupMatch = line.match(/^##\s+(\d+)\./)
+    if (groupMatch) {
+      inGroup = groupMatch[1] === taskGroupId
+      result.push(line)
+      continue
+    }
+    if (inGroup && /^-\s+\[\s\]\s+/.test(line)) {
+      result.push(line.replace(/^(-\s+)\[\s\](\s+)/, "$1[x]$2"))
       modified = true
+    } else {
+      result.push(line)
     }
   }
   if (!modified) return
-  await Bun.write(tasksMdPath, lines.join("\n"))
+  await Bun.write(tasksMdPath, result.join("\n"))
   const addResult = await runGitChecked(worktree, ["add", tasksMdPath])
   if (!addResult.success) {
     throw new Error(`git add tasks.md 失败：${addResult.stderr}`)
   }
-  const commitResult = await runGitChecked(worktree, ["commit", "-m", "docs(tasks): mark verified task checkboxes"])
+  const commitResult = await runGitChecked(worktree, ["commit", "-m", "docs(tasks): mark completed task checkboxes"])
   if (!commitResult.success) {
     throw new Error(`git commit tasks.md 失败：${commitResult.stderr}`)
   }
@@ -1151,7 +1151,6 @@ export const init = tool({
     const relevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
     const newTasks: TaskItem[] = parsedTasks.map((p, i) => ({
       id: String(i + 1),
-      tasksMdRef: p.tasksMdRef,
       specTrace: p.specTrace,
       title: p.title,
       status: "open" as const,
@@ -1452,15 +1451,14 @@ export const set_worktree = tool({
         const parsedTasks = await parseTasksMdForGroup(context.worktree, state.changeId, state.taskGroupId)
         const newRelevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
         tg.tasks = parsedTasks.map((p, i) => ({
-          id: String(i + 1),
-          tasksMdRef: p.tasksMdRef,
-          specTrace: p.specTrace,
-          title: p.title,
-          status: "open" as TaskStatus,
-          taskNumber: p.taskNumber,
-          rejectReason: null,
-        }))
-        tg.relevantSpecs = newRelevantSpecs
+      id: String(i + 1),
+      specTrace: p.specTrace,
+      title: p.title,
+      status: "open" as TaskStatus,
+      taskNumber: p.taskNumber,
+      rejectReason: null,
+    }))
+    tg.relevantSpecs = newRelevantSpecs
       }
       tg.status = "dev_impl"
     }
@@ -2206,7 +2204,6 @@ export const task_review_submit = tool({
       const task = tasks.find((t) => t.id === id)
       if (task && task.status === "submitted") { task.status = "verified" }
     }
-    await updateTasksMdForVerifiedTasks(context.worktree, state.changeId, tg.tasks, verified)
     for (const f of failed) {
       const task = tasks.find((t) => t.id === f.task_id)
       if (task && task.status === "submitted") {
@@ -2284,6 +2281,9 @@ export const task_review_submit = tool({
 
     // 推进判定
     if (args.passed) {
+      if (tg.worktreePath) {
+        await markTaskGroupCheckboxesComplete(tg.worktreePath, state.changeId, state.taskGroupId)
+      }
       return JSON.stringify({
         status: "ok",
         phase: "review(task=completed)",

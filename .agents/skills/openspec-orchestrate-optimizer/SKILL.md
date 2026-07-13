@@ -41,7 +41,7 @@ argument-hint: "[sessionID]"
 
 两种模式共享以下步骤，详细约束见各自 reference 文件：
 
-- **理解编排规范**：读取 `assets/skills/openspec-orchestrate/SKILL.md` 与 `assets/agents/openspec-orchestrator.md`，提取约束清单（模式 A 额外需信号映射）
+- **理解编排规范**：读取 `assets/agents/openspec-orchestrator.md` 与 AGENTS.md「编排流程设计」「治理原则」章节，提取约束清单（模式 A 额外需信号映射）
 - **理解设计准则**：读取 `AGENTS.md` 的"治理原则"章节，作为改进建议的架构约束
 - **收集相关文件**：分派 explore 子代理并发读取目标文件，子代理只返回结构化摘要
 - **改进建议**：每条建议必须指名具体文件路径和章节/行号；提出前必须读取目标文件当前内容；建议基于文件实际内容而非推测

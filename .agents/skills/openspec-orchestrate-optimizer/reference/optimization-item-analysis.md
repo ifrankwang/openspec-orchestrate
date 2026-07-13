@@ -39,7 +39,7 @@
 
 读取以下两份文档，提取约束清单：
 
-- `openspec-orchestrate` SKILL.md（`assets/skills/openspec-orchestrate/SKILL.md`）
+- AGENTS.md「编排流程设计」与「治理原则」章节
 - `openspec-orchestrator` agent 定义（`assets/agents/openspec-orchestrator.md`）
 
 约束清单用于评估"当前实现是否偏离规范""规范本身是否有缺口或不清晰处"。提取范围同模式 A 的 Step 2，但**不需要信号映射**（信号映射是 session 合规分析专用的，用于在 JSON 中查找验证证据），本模式改为"在文件内容中查找实现证据"。
@@ -53,7 +53,7 @@
 | 组件类型 | 路径 |
 |---------|------|
 | agent 定义 | `assets/agents/<name>.md` |
-| 编排 skill | `assets/skills/openspec-orchestrate/SKILL.md`（已在 B2 读取） |
+| 编排规范 | AGENTS.md（已在 B2 读取） |
 | 框架 skill | `assets/skills/<name>/SKILL.md`、`.agents/skills/<name>/SKILL.md` |
 | 工具逻辑 | `src/tools/orchestrate.ts`（注意编译后的运行行为可能与源码有出入，需结合 session 中的实际调用结果交叉验证） |
 | 配置/脚本 | 如 `scripts/export-session.sh` 等 |

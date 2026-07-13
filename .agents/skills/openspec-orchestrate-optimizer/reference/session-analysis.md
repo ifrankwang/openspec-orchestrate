@@ -7,7 +7,7 @@
 ## Quick start
 
 1. `scripts/export-session.sh <sessionID>` 导出并精简 session，返回 JSON 路径 + 摘要文件路径
-2. 读取 `openspec-orchestrate` SKILL.md 和 `openspec-orchestrator` agent 定义，理解流程并提取约束清单与信号映射
+2. 读取 AGENTS.md「编排流程设计」「治理原则」章节和 `openspec-orchestrator` agent 定义，理解流程并提取约束清单与信号映射
 3. 分派子代理按计划读取 session JSON（优先利用摘要文件制定分段策略），提取事件时间线
 4. 基于约束清单与事件时间线，执行合规分析（含 5-Why），识别改进点
 5. 读取目标文件，提出改进建议
@@ -28,7 +28,8 @@
 
 读取以下两份文档，一次性完成以下三项输出：
 
-- `openspec-orchestrate` SKILL.md（`assets/skills/openspec-orchestrate/SKILL.md`）：编排工作流的阶段划分、各 Phase 约束、自检清单
+- AGENTS.md「编排流程设计」章节：编排工作流的阶段划分、各 Phase 约束
+- AGENTS.md「治理原则」章节：编排设计原则、约束
 - `openspec-orchestrator` agent 定义（`assets/agents/openspec-orchestrator.md`）：编排者自身的禁止操作、子代理分派规则、权限约束
 
 skill 定义工作流与阶段约束，agent 定义补充编排者行为边界与分派规则。两者共同构成编排的完整行为规范，合规分析的约束清单必须同时覆盖两份文档。

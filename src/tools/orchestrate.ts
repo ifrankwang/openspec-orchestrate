@@ -237,9 +237,12 @@ function phasesAllEmpty(tg: TaskGroupState): boolean {
     && !hasReviewActivity
 }
 
-function hasBlockingIssues(issues: Array<{ severity: string; status?: string }>): boolean {
+function hasBlockingIssues(issues: Array<{ severity: string; status?: string; sourcePhase?: string }>, sourcePhase?: string): boolean {
   return issues.some(
-    (i) => (!i.status || i.status === "open" || i.status === "rejected" || i.status === "submitted" || i.status === "exemption") && isBlockingIssue(i)
+    (i) => 
+      (!sourcePhase || i.sourcePhase === sourcePhase) &&
+      (!i.status || i.status === "open" || i.status === "rejected" || i.status === "submitted" || i.status === "exemption") && 
+      isBlockingIssue(i)
   )
 }
 
@@ -2102,7 +2105,7 @@ export const tool_review_submit = tool({
     if (args.test_results) tg.phases.review.tool.testResults = args.test_results
     await writeState(context.worktree, state)
 
-    const hasBlocking = hasBlockingIssues(tg.issues)
+    const hasBlocking = hasBlockingIssues(tg.issues, "tool")
     if (args.passed && !hasBlocking) {
       return JSON.stringify({
         status: "ok",
@@ -2128,12 +2131,18 @@ export const tool_review_submit = tool({
     tg.phases.review.tool.completed = false
     tg.status = "dev_impl"
     await writeState(context.worktree, state)
+    const blockingIssues = tg.issues.filter(
+      (i) => (!i.sourcePhase || i.sourcePhase === "tool") && isBlockingIssue(i)
+    )
+    const issueSummary = blockingIssues.slice(0, 3)
+      .map((i) => `#${i.id}(dimension:${i.dimension} status:${i.status || "open"})`)
+      .join("、")
     return JSON.stringify({
       status: "recorded",
       layer: "tool",
       passed: false,
       retry_count: retryCount,
-      message: "职责已完成，请立即结束当前会话。",
+      message: `职责已完成，请立即结束当前会话。因遗留跨层阻塞 issue ${issueSummary} 等 ${blockingIssues.length} 个，需回退开发。`,
     })
   },
 })
@@ -2260,8 +2269,14 @@ export const task_review_submit = tool({
       if (failed.length > 0) {
         throw new Error(`任务层审核声称 passed=true，但存在 ${failed.length} 个未通过的 task。`)
       }
-      if (hasBlockingIssues(tg.issues)) {
-        throw new Error(`任务层审核声称 passed=true，但存在阻塞 issue。`)
+      if (hasBlockingIssues(tg.issues, "task")) {
+        const blockingIssues = tg.issues.filter(
+          (i) => (!i.sourcePhase || i.sourcePhase === "task") && isBlockingIssue(i)
+        )
+        const issueSummary = blockingIssues.slice(0, 3)
+          .map((i) => `#${i.id}(dimension:${i.dimension} status:${i.status || "open"})`)
+          .join("、")
+        throw new Error(`任务层审核声称 passed=true，但存在阻塞 issue：${issueSummary} 等 ${blockingIssues.length} 个。`)
       }
     }
     if (!args.passed && failed.length === 0) {

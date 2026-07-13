@@ -51,7 +51,7 @@ tests/                    — Bun test，100% fake-git（无真实 git 依赖）
 
 ### 调度方式
 
-每次子代理返回后，编排者调 `opx_status` 取权威 next-step 指令并遵循。当前阶段/层应分派谁由阶段门禁（`deriveCurrentAgents`）输出，编排者不自行推断流转顺序。
+每次子代理返回后，编排者调 `opx_status` 取权威 next-step 指令并遵循。`opx_status` 列出多个子代理时并排分派（单条消息中同时发送），不串行等待。当前阶段/层应分派谁由阶段门禁（`deriveCurrentAgents`）输出，编排者不自行推断流转顺序。
 
 ## 治理原则
 

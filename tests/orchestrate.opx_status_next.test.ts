@@ -184,6 +184,7 @@ describe("S4: task review passed", () => {
     expect(output).toContain("openspec-reviewer-performance")
     expect(output).toContain("openspec-reviewer-security")
     expect(output).toContain("openspec-reviewer-maintainability")
+    expect(output).toContain("并排分派")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

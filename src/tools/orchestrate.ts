@@ -801,6 +801,9 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
       if (agents.length > 0) {
         const agentList = agents.map((a) => `\`${a}\``).join("、")
         lines.push(`分派子代理：${agentList}。`)
+        if (agents.length > 1) {
+          lines.push("（多子代理相互独立，可在单条消息中并排分派，无需串行等待）")
+        }
         if (tg.phases.review.task.completed && !tg.phases.review.tool.completed) {
           lines.push("（说明：task 层已自动跳过，tool review 完成后直接进入 quality review）")
         }
@@ -815,6 +818,9 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
     if (agents.length > 0) {
       const agentList = agents.map((a) => `\`${a}\``).join("、")
       lines.push(`分派子代理：${agentList}。`)
+      if (agents.length > 1) {
+        lines.push("（多子代理相互独立，可在单条消息中并排分派，无需串行等待）")
+      }
       if (tg.phases.review.task.completed && !tg.phases.review.tool.completed) {
         lines.push("（说明：task 层已自动跳过，tool review 完成后直接进入 quality review）")
       }

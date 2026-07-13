@@ -807,6 +807,8 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
         lines.push("（无待分派项，请检查状态）")
       }
     }
+  } else if (tg.status === "task_analysis" && tg.phases.architect_review.completed) {
+    lines.push("架构师复核已通过。请调用 `opx_orch_set_worktree` 设置 worktree 后分派 `openspec-developer`。")
   } else {
     const agents = deriveCurrentAgents(tg)
     if (agents.length > 0) {

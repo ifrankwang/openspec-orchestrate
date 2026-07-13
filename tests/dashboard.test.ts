@@ -45,13 +45,13 @@ const mockState = {
           quality: {
             completed: false,
             progress: {
-              style: { submitted: false, passed: false },
-              architecture: { submitted: false, passed: false },
-              performance: { submitted: false, passed: false },
-              security: { submitted: false, passed: false },
-              maintainability: { submitted: false, passed: false },
+              style: "pending",
+              architecture: "pending",
+              performance: "pending",
+              security: "pending",
+              maintainability: "pending",
             },
-            baselineDone: false,
+            
           },
         },
       },

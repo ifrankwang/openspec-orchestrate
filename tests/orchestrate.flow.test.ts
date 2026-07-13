@@ -181,7 +181,6 @@ describe("1. Happy Path — 完整流程", () => {
     expect(tg3.tasks.every((t: any) => t.status === "submitted")).toBe(true)
     expect(tg3.lastFilesChanged).toContain("src/F1.java")
     expect(tg3.status).toBe("review")
-    expect(tg3.phases.dev_impl.completed).toBe(true)
 
 
 
@@ -198,7 +197,6 @@ describe("1. Happy Path — 完整流程", () => {
 
     state = readStateSync(wt, CID)
     const tg6 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg6.phases.dev_impl.completed).toBe(true)
     expect(tg6.status).toBe("review")
 
     // 6. 5 dimension quality reviewers all pass (首轮)
@@ -401,7 +399,7 @@ describe("4. 豁免裁定 — tool 层通过 exempt_issue_ids 授权", () => {
       request_exempts: [{ issue_id: issueId, reason: "Trivial" }]}, d)
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exemption")
+    expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exemption_requested")
 
     // dev_submit reset layers. Re-run with exemption handling.
     await transitionToReview(wt, o, toolR, taskR, [issueId])
@@ -453,7 +451,6 @@ describe("5. Recovery — dev_impl 阶段恢复", () => {
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg.phases.architect_review.completed).toBe(true)
-    expect(tg.phases.dev_impl.completed).toBe(false)
     expect(tg.tasks.every((t: any) => t.status === "open")).toBe(true)
     expect(tg.worktreePath).toBe(devWt)
     expect(tg.branchName).toBe("task-group/1")
@@ -498,7 +495,6 @@ describe("6. Recovery — review 阶段恢复（保留 issues）", () => {
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg.phases.architect_review.completed).toBe(true)
-    expect(tg.phases.dev_impl.completed).toBe(true)
     expect(tg.issues).toHaveLength(1)
     expect(tg.issues[0].id).toBe(origIssueId)
     expect(tg.issues[0].status).toBe("open")
@@ -586,7 +582,6 @@ describe("8. Recovery — task_analysis 阶段（回退）", () => {
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg.status).toBe("task_analysis")
     expect(tg.phases.architect_review.completed).toBe(false)
-    expect(tg.phases.dev_impl.completed).toBe(false)
     expect(tg.tasks.every((t: any) => t.status === "open")).toBe(true)
 
     const r2 = JSON.parse(await arch_submit.execute({ passed: true, issues: [],
@@ -650,7 +645,7 @@ describe("9. 豁免裁定 — tool+task 层 via exempt_issue_ids", () => {
       request_exempts: [{ issue_id: issueId, reason: "Team convention" }]}, d)
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exemption")
+    expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exemption_requested")
     expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).exemptReason).toBe("Team convention")
 
     // dev_submit reset layers. Re-run with exemption handled.
@@ -766,7 +761,7 @@ describe("10. quality 层豁免 — quality reviewer 裁定", () => {
       request_exempts: [{ issue_id: issueId, reason: "Trivial" }]}, d)
 
     state = readStateSync(wt, CID)
-    expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exemption")
+    expect(state.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.id === issueId).status).toBe("exemption_requested")
 
     // dev_submit reset layers. Re-run with exemption.
     await transitionToReview(wt, o, toolR, taskR, [issueId])
@@ -820,10 +815,12 @@ describe("11. 守卫 — quality 阶段阻塞 issue", () => {
     const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
     expect(tgAfter.phases.review.retryCount).toBe(1)
     expect(tgAfter.status).toBe("dev_impl")
-    const allNotSubmitted = Object.values(tgAfter.phases.review.quality.progress).every(
-      (p: any) => p.submitted === false,
-    )
-    expect(allNotSubmitted).toBe(true)
+    // quality progress 不再清空——failed 维保持 failed，passed 维保持 passed
+    expect(tgAfter.phases.review.quality.progress.style).toBe("failed")
+    expect(tgAfter.phases.review.quality.progress.architecture).toBe("passed")
+    expect(tgAfter.phases.review.quality.progress.performance).toBe("passed")
+    expect(tgAfter.phases.review.quality.progress.security).toBe("passed")
+    expect(tgAfter.phases.review.quality.progress.maintainability).toBe("passed")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -893,7 +890,6 @@ describe("12. resolve_review — continue / giveup", () => {
       expect(tgS.phases.review.retryCount).toBe(3)
       expect(tgS.phases.review.tool.completed).toBe(false)
       expect(tgS.phases.review.task.completed).toBe(false)
-      expect(tgS.phases.review.quality.completed).toBe(false)
       expect(tgS.phases.review.completed).toBe(false)
       expect(tgS.status).toBe("dev_impl")
 
@@ -944,8 +940,7 @@ describe("12. resolve_review — continue / giveup", () => {
       expectNoOrchestration(lastRes.message)
       expect(lastRes.retry_count).toBe(1)
 
-      // Rounds 2-3：recovery → quality submit（仅 style 维度）。
-      // 不再需要 dev_submit 重置——finalizeQualityPhase 已自动重置 quality.progress 和 quality.completed
+      // Rounds 2-3：recovery → dev_submit（重置 progress）→ quality submit（仅 style 维度）。
       for (let round = 2; round <= 3; round++) {
         state = readStateSync(wt, CID)
         const tg = state.taskGroups.find((g: any) => g.id === "1")
@@ -953,9 +948,19 @@ describe("12. resolve_review — continue / giveup", () => {
           change_id: CID, task_group_id: "1",
           recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, o)
 
+        // progress 不再自动清空，需 dev_submit 重置
+        fakeGit.diffs.set(devWt, ["src/F1.java"])
+        const prevState = readStateSync(wt, CID)
+        const prevIssueId = prevState.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.status === "open")?.id
+        await dev_submit.execute({ fixed_issue_ids: prevIssueId ? [prevIssueId] : [] }, d)
+
+        // quality reviewer 须裁定 dev 刚提交的 issue
+        const afterDev = readStateSync(wt, CID)
+        const submittedIssueId = afterDev.taskGroups.find((g: any) => g.id === "1").issues.find((i: any) => i.status === "submitted")?.id
+
         lastRes = JSON.parse(await quality_review_submit.execute({ passed: false,
           issues: [{ severity: "Low", file: "src/x.java", line: round, description: `Blocking issue round ${round}`, suggestion: "Fix" }],
-          fixed_issue_ids: []}, makeCtx("openspec-reviewer-style", wt)))
+          fixed_issue_ids: submittedIssueId ? [submittedIssueId] : []}, makeCtx("openspec-reviewer-style", wt)))
 
         expectNoOrchestration(lastRes.message)
         if (round < 3) {
@@ -975,8 +980,9 @@ describe("12. resolve_review — continue / giveup", () => {
       state = readStateSync(wt, CID)
       const tgG = state.taskGroups.find((g: any) => g.id === "1")
       expect(tgG.phases.review.completed).toBe(true)
+      // giveup 将所有 open/rejected/submitted/exemption_requested 的 blocking issue 置为 exempted
       for (const issue of tgG.issues) {
-        expect(issue.status).toBe("exempted")
+        expect(["exempted", "verified"]).toContain(issue.status)
       }
     } finally {
       try { rmSync(root, { recursive: true, force: true }) } catch {}
@@ -1062,7 +1068,6 @@ describe("13. 去阶段化 — dev 在 dev_impl 状态下可见 review issue", (
     expect(tgFinal.status).toBe("review")
     expect(tgFinal.phases.review.tool.completed).toBe(false)
     expect(tgFinal.phases.review.task.completed).toBe(true)
-    expect(tgFinal.phases.review.quality.completed).toBe(false)
     expect(tgFinal.issues.find((i: any) => i.id === issueId).status).toBe("submitted")
 
     // Cleanup

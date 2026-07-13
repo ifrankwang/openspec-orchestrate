@@ -525,7 +525,6 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
     expect(tg2.phases.review.tool.completed).toBe(true)
     expect(tg2.phases.review.task.completed).toBe(true)
-    expect(tg2.phases.review.quality.completed).toBe(false)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -560,7 +559,6 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
     expect(tg2.phases.review.tool.completed).toBe(false)
     expect(tg2.phases.review.task.completed).toBe(false)
-    expect(tg2.phases.review.quality.completed).toBe(false)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -631,9 +629,8 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     state = readStateSync(wt, CID)
     const tg1 = state.taskGroups.find((g: any) => g.id === "1")
     tg1.phases.review.retryCount = 2
-    tg1.phases.review.quality.baselineDone = true
-    tg1.phases.review.quality.progress.style = { submitted: true, passed: true }
-    tg1.phases.review.quality.progress.architecture = { submitted: true, passed: true }
+    tg1.phases.review.quality.progress.style = "passed"
+    tg1.phases.review.quality.progress.architecture = "passed"
     writeFileSync(
       join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
       JSON.stringify(state, null, 2)
@@ -652,20 +649,18 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     // 验证 quality 进度全部保留
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg2.phases.review.quality.baselineDone).toBe(true)
     expect(tg2.phases.review.retryCount).toBe(2)
-    expect(tg2.phases.review.quality.progress.style.submitted).toBe(true)
-    expect(tg2.phases.review.quality.progress.architecture.submitted).toBe(true)
-    expect(tg2.phases.review.quality.progress.performance.submitted).toBe(false)
+    expect(tg2.phases.review.quality.progress.style).toBe("passed")
+    expect(tg2.phases.review.quality.progress.architecture).toBe("passed")
+    expect(tg2.phases.review.quality.progress.performance).toBe("pending")
     expect(tg2.phases.review.tool.completed).toBe(true)
     expect(tg2.phases.review.task.completed).toBe(true)
-    expect(tg2.phases.review.quality.completed).toBe(false)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 
-  // B3.6b recovery review + review_layer=quality + preserve_progress=false → 清空 quality 进度
-  test("B3.6b preserve_progress=false → 清空 baselineDone/retryCount/progress，门禁放行全部 5 维", async () => {
+  // B3.6b recovery review + review_layer=quality + preserve_progress=false → 仅清 retryCount，保留维度进度
+  test("B3.6b preserve_progress=false → 清空 retryCount，保留 passed 维度，门禁仅放行非 passed 3 维", async () => {
     const root = `/tmp/optimize-b3fb-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -698,9 +693,8 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     state = readStateSync(wt, CID)
     const tg1 = state.taskGroups.find((g: any) => g.id === "1")
     tg1.phases.review.retryCount = 2
-    tg1.phases.review.quality.baselineDone = true
-    tg1.phases.review.quality.progress.style = { submitted: true, passed: true }
-    tg1.phases.review.quality.progress.architecture = { submitted: true, passed: true }
+    tg1.phases.review.quality.progress.style = "passed"
+    tg1.phases.review.quality.progress.architecture = "passed"
     writeFileSync(
       join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
       JSON.stringify(state, null, 2)
@@ -716,27 +710,33 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
         preserve_progress: false,
         review_layer: "quality"}}, o)
 
-    // 验证 quality 进度被清空
+    // 验证 quality 进度：retryCount 清空，passed 维度保留，其余 pending
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg2.phases.review.quality.baselineDone).toBe(false)
     expect(tg2.phases.review.retryCount).toBe(0)
-    for (const dim of ["style", "architecture", "performance", "security", "maintainability"]) {
-      expect(tg2.phases.review.quality.progress[dim].submitted).toBe(false)
-      expect(tg2.phases.review.quality.progress[dim].passed).toBe(false)
-    }
+    expect(tg2.phases.review.quality.progress.style).toBe("passed")
+    expect(tg2.phases.review.quality.progress.architecture).toBe("passed")
+    expect(tg2.phases.review.quality.progress.performance).toBe("pending")
+    expect(tg2.phases.review.quality.progress.security).toBe("pending")
+    expect(tg2.phases.review.quality.progress.maintainability).toBe("pending")
 
     // 验证 tool/task 层状态仍正确
     expect(tg2.phases.review.tool.completed).toBe(true)
     expect(tg2.phases.review.task.completed).toBe(true)
-    expect(tg2.phases.review.quality.completed).toBe(false)
 
-    // 验证门禁放行全部 5 维 quality reviewer（baselineDone=false → getRequiredDimensions 返回全部 5 维）
-    for (const agent of ["openspec-reviewer-style", "openspec-reviewer-architecture", "openspec-reviewer-performance", "openspec-reviewer-security", "openspec-reviewer-maintainability"]) {
+    // 验证门禁仅放行非 passed 的 3 维 quality reviewer
+    for (const agent of ["openspec-reviewer-performance", "openspec-reviewer-security", "openspec-reviewer-maintainability"]) {
       const ctx = makeCtx(agent, wt)
       const view = await status.execute({}, ctx)
       const str = typeof view === "string" ? view : JSON.stringify(view)
       expect(str).toMatch(/✅ 当前轮到你执行/)
+    }
+    // 已 passed 的维度 reviewer 不再被分派
+    for (const agent of ["openspec-reviewer-style", "openspec-reviewer-architecture"]) {
+      const ctx = makeCtx(agent, wt)
+      const view = await status.execute({}, ctx)
+      const str = typeof view === "string" ? view : JSON.stringify(view)
+      expect(str).not.toMatch(/当前轮到你执行/)
     }
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
@@ -906,15 +906,15 @@ describe("B5. dev_submit 不再重置 retryCount", () => {
     await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [issueId] }, toolR)
     await task_review_submit.execute({ passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
-    // 4. retryCount=1 修复轮 — tool 已裁定 issue→verified，dimsWithPendingAction 空 → 当前无预期角色
+    // 4. retryCount=1 修复轮 — style progress 仍为 "pending"（未通过），style 可过 gate
     const styleR = makeCtx("openspec-reviewer-style", wt)
     const archR = makeCtx("openspec-reviewer-architecture", wt)
     const styleView = await status.execute({}, styleR)
     const styleStr = typeof styleView === "string" ? styleView : JSON.stringify(styleView)
-    expect(styleStr).not.toMatch(/✅ 当前轮到你执行/) // style issue 已被 tool 裁定为 verified → 空激活集
+    expect(styleStr).toMatch(/✅ 当前轮到你执行/)
     const archView = await status.execute({}, archR)
     const archStr = typeof archView === "string" ? archView : JSON.stringify(archView)
-    expect(archStr).not.toMatch(/✅ 当前轮到你执行/) // 同上
+    expect(archStr).not.toMatch(/✅ 当前轮到你执行/) // architecture 已 passed，不过 gate
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -981,13 +981,12 @@ describe("B7. computeRequiredDims 异常回退", () => {
     const state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     tg.phases.review.retryCount = 2
-    tg.phases.review.quality.baselineDone = true
     tg.phases.review.quality.progress = {
-      style: { submitted: false, passed: false },
-      architecture: { submitted: false, passed: false },
-      performance: { submitted: false, passed: false },
-      security: { submitted: false, passed: false },
-      maintainability: { submitted: false, passed: false }}
+      style: "passed",
+      architecture: "passed",
+      performance: "passed",
+      security: "passed",
+      maintainability: "passed"}
     writeFileSync(
       join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
       JSON.stringify(state, null, 2)
@@ -1048,7 +1047,6 @@ describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
 
     state = readStateSync(wt, CID)
     const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tgAfter.phases.review.quality.baselineDone).toBe(true)
     expect(tgAfter.phases.review.completed).toBe(true)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
@@ -1062,10 +1060,15 @@ describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
 
     const { orch, arch, dev, toolR, taskR } = await setupThroughReviewReady(wt, fakeGit)
 
-    // 模拟 quality 基线已完成，无 pending issue
+    // 模拟 quality 全部已通过，无 pending issue
     let state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    tg.phases.review.quality.baselineDone = true
+    tg.phases.review.quality.progress = {
+      style: "passed",
+      architecture: "passed",
+      performance: "passed",
+      security: "passed",
+      maintainability: "passed"}
     tg.phases.review.retryCount = 0
     writeFileSync(
       join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),

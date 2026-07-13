@@ -87,7 +87,7 @@ permission:
 
 ### 概览
 - task: open=X, submitted=Y, rejected=Z, verified=W, skipped=V
-- issue: open=A, submitted=B, rejected=C, verified=D, exemption=E, exempted=F
+- issue: open=A, submitted=B, rejected=C, verified=D, exemption_requested=E, exempted=F
 
 ### 处理情况
 - 已修复并确认：D 个

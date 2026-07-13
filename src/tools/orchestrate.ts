@@ -2,6 +2,8 @@ import { tool } from "@opencode-ai/plugin"
 import path from "path"
 import { mkdirSync } from "node:fs"
 
+// === STATE REFACTOR: 精简状态模型（DimensionVerdict 枚举替代 DimensionProgress，删除 DevPhaseData/baselineDone/quality.completed，exemption→exemption_requested） ===
+
 // ─── GitRunner 注入点（测试用 fake-git） ───
 
 export interface GitRunner {
@@ -104,7 +106,7 @@ interface ExecutionBoundary {
 
 const TASK_STATUSES = ["open", "submitted", "rejected", "verified", "skipped"] as const
 type TaskStatus = typeof TASK_STATUSES[number]
-const ISSUE_STATUSES = ["open", "submitted", "rejected", "verified", "exemption", "exempted"] as const
+const ISSUE_STATUSES = ["open", "submitted", "rejected", "verified", "exemption_requested", "exempted"] as const
 type IssueStatus = typeof ISSUE_STATUSES[number]
 
 interface TaskItem {
@@ -133,20 +135,13 @@ interface IssueItem {
   rejectReason: string | null
 }
 
-interface DimensionProgress {
-  submitted: boolean
-  passed: boolean
-}
+type DimensionVerdict = "pending" | "passed" | "failed"
 
-type QualityLayerProgress = Record<ReviewDimension, DimensionProgress>
+type QualityLayerProgress = Record<ReviewDimension, DimensionVerdict>
 
 interface ReviewLayerData {
   completed: boolean
   testResults?: string
-}
-
-interface DevPhaseData {
-  completed: boolean
 }
 
 interface ReviewPhaseData {
@@ -155,7 +150,7 @@ interface ReviewPhaseData {
   lastResolvedRetryCount: number
   tool: ReviewLayerData
   task: ReviewLayerData
-  quality: ReviewLayerData & { progress: QualityLayerProgress; baselineDone: boolean }
+  quality: { progress: QualityLayerProgress }
 }
 
 interface SimplePhaseData {
@@ -164,7 +159,6 @@ interface SimplePhaseData {
 
 interface Phases {
   architect_review: SimplePhaseData
-  dev_impl: DevPhaseData
   review: ReviewPhaseData
 }
 
@@ -198,25 +192,35 @@ interface OrchestrateState {
 function createEmptyPhases(): Phases {
   return {
     architect_review: { completed: false },
-    dev_impl: { completed: false },
     review: {
       completed: false,
       retryCount: 0,
       lastResolvedRetryCount: 0,
       tool: { completed: false },
       task: { completed: false },
-      quality: { completed: false, progress: createEmptyQualityProgress(), baselineDone: false },
+      quality: { progress: createEmptyQualityProgress() },
     },
   }
 }
 
+function handleRetryCheckpoint(
+  tg: TaskGroupState
+): { checkpoint: boolean; retryCount: number } | null {
+  tg.phases.review.retryCount++
+  const retryCount = tg.phases.review.retryCount
+  if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
+    return null
+  }
+  return { checkpoint: false, retryCount }
+}
+
 function createEmptyQualityProgress(): QualityLayerProgress {
   return {
-    style: { submitted: false, passed: false },
-    architecture: { submitted: false, passed: false },
-    performance: { submitted: false, passed: false },
-    security: { submitted: false, passed: false },
-    maintainability: { submitted: false, passed: false },
+    style: "pending",
+    architecture: "pending",
+    performance: "pending",
+    security: "pending",
+    maintainability: "pending",
   }
 }
 
@@ -230,7 +234,7 @@ function deriveStatus(tg: TaskGroupState, currentTaskGroupId: string): Orchestra
 function phasesAllEmpty(tg: TaskGroupState): boolean {
   const hasReviewActivity = tg.phases.review.retryCount > 0
   return !tg.phases.architect_review.completed
-    && !tg.phases.dev_impl.completed
+    && tg.status === "task_analysis"
     && tg.tasks.every((t) => t.status === "open")
     && !tg.phases.review.completed
     && tg.issues.length === 0
@@ -241,7 +245,7 @@ function hasBlockingIssues(issues: Array<{ severity: string; status?: string; so
   return issues.some(
     (i) => 
       (!sourcePhase || i.sourcePhase === sourcePhase) &&
-      (!i.status || i.status === "open" || i.status === "rejected" || i.status === "submitted" || i.status === "exemption") && 
+      (!i.status || i.status === "open" || i.status === "rejected" || i.status === "submitted" || i.status === "exemption_requested") && 
       isBlockingIssue(i)
   )
 }
@@ -255,22 +259,18 @@ function allTasksVerified(tasks: TaskItem[]): boolean {
   return tasks.length > 0 && tasks.every((t) => t.status === "verified")
 }
 
-// 存在待确认修复（submitted）或待裁定豁免（exemption）issue 的维度集
+// 存在待确认修复（submitted）或待裁定豁免（exemption_requested）issue 的维度集
 function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
   const dims = new Set<string>()
   for (const i of tg.issues) {
-    if (i.status === "submitted" || i.status === "exemption") dims.add(i.dimension)
+    if (i.status === "submitted" || i.status === "exemption_requested") dims.add(i.dimension)
   }
   return dims
 }
 
-// 派生本轮需审查的维度集（不持久化）：
-// quality.baselineDone=false 时全部维度建基线；修复轮仅含存在 submitted/exemption issue 的维度。
+// 派生本轮需审查的维度集：non-passed 维度加上有 pending action 的维度
 function computeRequiredDims(tg: TaskGroupState): ReviewDimension[] {
-  const all = [...REVIEW_DIMENSIONS] as ReviewDimension[]
-  if (!tg.phases.review.quality.baselineDone) return all
-  const dims = dimsWithPendingAction(tg)
-  return all.filter((d) => dims.has(d))
+  return REVIEW_DIMENSIONS.filter(d => tg.phases.review.quality.progress[d] !== "passed")
 }
 
 // ─── 调用者身份校验 ───
@@ -614,7 +614,7 @@ function taskSummary(tasks: TaskItem[]): Record<string, number> {
 }
 
 function issueSummary(issues: IssueItem[]): Record<string, number> {
-  const counts: Record<string, number> = { open: 0, submitted: 0, rejected: 0, verified: 0, exemption: 0, exempted: 0 }
+  const counts: Record<string, number> = { open: 0, submitted: 0, rejected: 0, verified: 0, exemption_requested: 0, exempted: 0 }
   for (const i of issues) counts[i.status]++
   return counts
 }
@@ -642,7 +642,7 @@ function renderIssueItem(i: IssueItem): string {
   lines.push(`  - 文件：${i.file}${i.line > 0 ? `:${i.line}` : ""}`)
   lines.push(`  - 描述：${i.description}`)
   if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
-  if (i.status === "exemption" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
+  if (i.status === "exemption_requested" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
   if (i.status === "rejected" && i.rejectReason) lines.push(`  - 驳回原因：${i.rejectReason}`)
   lines.push(`  - 修复未过次数：${i.refixCount}`)
   return lines.join("\n")
@@ -661,7 +661,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   lines.push("|------|------|")
   const phaseSummary = (name: string, p: { completed: boolean }) => p.completed ? "✓" : (tg.status === name ? "●" : "✗")
   lines.push(`| task_analysis | ${phaseSummary("task_analysis", tg.phases.architect_review)} |`)
-  const devStatus = tg.phases.dev_impl.completed ? "✓" : (tg.status === "dev_impl" ? "●" : (tg.status === "review" ? "⭕" : "✗"))
+  const devStatus = (tg.status === "review" || tg.status === "completed") ? "✓" : (tg.status === "dev_impl" ? "●" : "✗")
   lines.push(`| dev_impl | ${devStatus} |`)
   const reviewParts: string[] = []
   if (tg.phases.review.tool.completed) reviewParts.push("tool✓")
@@ -670,10 +670,11 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   } else if (tg.phases.review.task.completed) {
     reviewParts.push("task✓")
   }
-  if (tg.phases.review.quality.completed) reviewParts.push("quality✓")
+  const allQualityPassed = REVIEW_DIMENSIONS.every(d => tg.phases.review.quality.progress[d] === "passed")
+  if (allQualityPassed) reviewParts.push("quality✓")
   if (!tg.phases.review.tool.completed) reviewParts.push("tool⏳")
   else if (!tg.phases.review.task.completed) reviewParts.push("task⏳")
-  else if (!tg.phases.review.quality.completed) reviewParts.push("quality⏳")
+  else if (!allQualityPassed) reviewParts.push("quality⏳")
   const reviewLayer = reviewParts.join(" → ")
   const reviewStatus = tg.phases.review.completed ? "✓" : (tg.status === "review" ? `● ${reviewLayer}` : "✗")
   lines.push(`| review | ${reviewStatus} |`)
@@ -694,12 +695,12 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   lines.push(`| submitted | ${is.submitted} |`)
   lines.push(`| rejected | ${is.rejected} |`)
   lines.push(`| verified | ${is.verified} |`)
-  lines.push(`| exemption | ${is.exemption} |`)
+  lines.push(`| exemption_requested | ${is.exemption_requested} |`)
   lines.push(`| exempted | ${is.exempted} |`)
   lines.push("")
   lines.push("## 审核进度", "")
   const rp = tg.phases.review.quality.progress
-  const fmt = (k: ReviewDimension) => `${k}=${rp[k].submitted ? (rp[k].passed ? "passed" : "rejected") : "not_submitted"}`
+  const fmt = (k: ReviewDimension) => `${k}=${rp[k]}`
   lines.push(`| 维度 | 状态 |`)
   lines.push(`|------|------|`)
   for (const dim of ["style", "architecture", "performance", "security", "maintainability"] as const) {
@@ -734,9 +735,9 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   lines.push("## 一致性分析", "")
   const checks: string[] = []
   // 规则 1：阶段逆序
-  if (tg.phases.dev_impl.completed && tg.status === "task_analysis") {
-    checks.push(`- ⚠️ 阶段逆序：status=task_analysis 但 dev_impl.completed=true`)
-    checks.push(`  建议：\`opx_orch_init({ recovery: { phase: "dev_impl", ... } })\``)
+  if ((tg.status === "review" || tg.status === "completed") && tg.phases.architect_review.completed === false) {
+    checks.push(`- ⚠️ 阶段逆序：status=${tg.status} 但 architect_review 未完成`)
+    checks.push(`  建议：\`opx_orch_init({ recovery: { phase: "task_analysis", ... } })\``)
   }
   if (tg.phases.review.completed && tg.status !== "review" && tg.status !== "completed") {
     checks.push(`- ⚠️ 阶段逆序：status=${tg.status} 但 review.completed=true`)
@@ -754,8 +755,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   }
   // 规则 4：review 内部——quality 维度 passed 但仍有该维度阻塞 issue
   for (const dim of REVIEW_DIMENSIONS) {
-    const p = tg.phases.review.quality.progress[dim]
-    if (p.passed) {
+    if (tg.phases.review.quality.progress[dim] === "passed") {
       const openInDim = tg.issues.filter(
         (i) => i.dimension === dim && (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
       )
@@ -873,7 +873,7 @@ function renderArchitectView(state: OrchestrateState, tg: TaskGroupState): strin
   else for (const t of open) lines.push(renderTaskItem(t))
   lines.push("")
   lines.push("## Issue (申请豁免中)", "")
-  const exemption = tg.issues.filter((i) => i.status === "exemption")
+  const exemption = tg.issues.filter((i) => i.status === "exemption_requested")
   if (exemption.length === 0) lines.push("- (无)")
   else for (const i of exemption) lines.push(renderIssueItem(i))
   lines.push("")
@@ -965,7 +965,7 @@ function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState): strin
   else for (const i of sortIssuesByCategory(submittedIssues)) lines.push(renderIssueItem(i))
   lines.push("")
   lines.push("## Issue (豁免裁定中)", "")
-  const exemption = tg.issues.filter((i) => i.status === "exemption")
+  const exemption = tg.issues.filter((i) => i.status === "exemption_requested")
   if (exemption.length === 0) lines.push("- (无)")
   else for (const i of sortIssuesByCategory(exemption)) lines.push(renderIssueItem(i))
   return lines.join("\n")
@@ -989,7 +989,7 @@ function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): stri
   lines.push("")
   lines.push("## 全部 Issue（tool 层可见）", "")
   const allIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "tool" && (i.status === "open" || i.status === "submitted" || i.status === "exemption")
+    (i) => i.sourcePhase === "tool" && (i.status === "open" || i.status === "submitted" || i.status === "exemption_requested")
   )
   if (allIssues.length === 0) lines.push("- (无)")
   else for (const i of sortIssuesByCategory(allIssues)) {
@@ -997,7 +997,7 @@ function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): stri
     lines.push(`- ${dimTag} Issue #${i.id} | ${i.severity} | ${i.file}${i.line > 0 ? `:${i.line}` : ""}`)
     lines.push(`  - 描述：${i.description}`)
     if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
-    if (i.status === "exemption" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
+    if (i.status === "exemption_requested" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
   }
   lines.push("")
   return lines.join("\n")
@@ -1034,7 +1034,7 @@ function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState): stri
   }
   lines.push("")
   const taskIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "task" && (i.status === "open" || i.status === "submitted" || i.status === "exemption")
+    (i) => i.sourcePhase === "task" && (i.status === "open" || i.status === "submitted" || i.status === "exemption_requested")
   )
   if (taskIssues.length > 0) {
     lines.push("## 审查 Issue", "")
@@ -1085,7 +1085,7 @@ function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupState, ag
     ""
   )
   const exemptionIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "exemption"
+    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "exemption_requested"
   )
   lines.push("## 本维度 Issue (豁免裁定中)", "")
   if (exemptionIssues.length === 0) lines.push("- (无)")
@@ -1164,7 +1164,7 @@ export const init = tool({
         if (p === targetPhase) { found = true; continue }
         if (!found) {
           if (p === "dev_impl") {
-            phases.dev_impl = { completed: true }
+            // dev_impl completed is derived from status
           } else if (p === "review") {
             phases.review.completed = true
           } else {
@@ -1248,8 +1248,6 @@ export const init = tool({
             phases.review.task.completed = true
             if (!preserveProgress) {
               phases.review.retryCount = 0
-              phases.review.quality.progress = createEmptyQualityProgress()
-              phases.review.quality.baselineDone = false
             }
           }
         }
@@ -1458,7 +1456,6 @@ export const set_worktree = tool({
         }))
         tg.relevantSpecs = newRelevantSpecs
       }
-      tg.phases.dev_impl.completed = false
       tg.status = "dev_impl"
     }
 
@@ -1530,14 +1527,11 @@ export const status = tool({
       }
     }
 
-    // 兜底：baseline 已建但无待审维度 — 自动收尾
+    // 兜底：所有维度已通过且无待分派 agent — 自动收尾
     if (
       tg.status === "review" &&
-      tg.phases.review.quality.baselineDone &&
-      !tg.phases.review.quality.completed &&
       deriveCurrentAgents(tg).length === 0
     ) {
-      tg.phases.review.quality.completed = true
       tg.phases.review.completed = true
       await writeState(context.worktree, state)
     }
@@ -1810,7 +1804,7 @@ export const dev_submit = tool({
       if (issue.status === "verified") {
         throw new Error(`issue #${r.issue_id} 已通过验证，无需申请豁免。`)
       }
-      issue.status = "exemption"
+      issue.status = "exemption_requested"
       issue.exemptReason = r.reason
       requestedIds.push(r.issue_id)
       touchedAnyIssue = true
@@ -1830,21 +1824,23 @@ export const dev_submit = tool({
     // 选项 Y 决策
     if (touchedAnyIssue) {
       // 重置 review 三层
+      tg.phases.review.completed = false
       tg.phases.review.tool.completed = false
       tg.phases.review.task.completed = false
-      tg.phases.review.quality.completed = false
-      tg.phases.review.quality.progress = createEmptyQualityProgress()
+      for (const d of REVIEW_DIMENSIONS) {
+        if (dimsWithPendingAction(tg).has(d)) {
+          tg.phases.review.quality.progress[d] = "pending"
+        }
+      }
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
     } else {
-      tg.phases.dev_impl.completed = true
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
     }
 
-    // 自动跳过：baseline 已完成且本轮无待审维度
-    if (tg.phases.review.quality.baselineDone && requiredDims.length === 0) {
-      tg.phases.review.quality.completed = true
+    // 自动跳过：无待审维度
+    if (requiredDims.length === 0) {
       tg.phases.review.completed = true
     }
 
@@ -1959,8 +1955,8 @@ function applyReviewGate(
   sourcePhase?: string
 ): void {
   const filtered = dimension
-    ? issues.filter((i) => (i.status === "submitted" || i.status === "exemption") && i.dimension === dimension && i.sourcePhase === sourcePhase)
-    : issues.filter((i) => (i.status === "submitted" || i.status === "exemption") && i.sourcePhase === sourcePhase)
+    ? issues.filter((i) => (i.status === "submitted" || i.status === "exemption_requested") && i.dimension === dimension && i.sourcePhase === sourcePhase)
+    : issues.filter((i) => (i.status === "submitted" || i.status === "exemption_requested") && i.sourcePhase === sourcePhase)
 
   const fixedSet = new Set(fixedIds)
   const exemptSet = new Set(exemptIds)
@@ -1991,7 +1987,7 @@ function applyReviewGate(
   }
   for (const id of exemptIds) {
     const issue = issues.find((i) => i.id === id)
-    if (issue && issue.status !== "exemption") {
+    if (issue && issue.status !== "exemption_requested") {
       throw new Error(`issue #${id} 状态为 ${issue.status}，不可通过 exempt_issue_ids 豁免（仅 exemption 可豁免）。`)
     }
   }
@@ -2015,14 +2011,14 @@ function applyReviewGate(
   }
   for (const id of exemptIds) {
     const issue = issues.find((i) => i.id === id)
-    if (issue && issue.status === "exemption") {
+    if (issue && issue.status === "exemption_requested") {
       issue.status = "exempted"
       if (!issue.exemptReason) issue.exemptReason = "(由审核者豁免)"
     }
   }
   for (const r of rejectedIssueInputs) {
     const issue = issues.find((i) => i.id === r.issue_id)
-    if (issue && (issue.status === "submitted" || issue.status === "exemption")) {
+    if (issue && (issue.status === "submitted" || issue.status === "exemption_requested")) {
       const wasSubmitted = issue.status === "submitted"
       issue.status = "rejected"
       issue.rejectReason = r.reason
@@ -2058,7 +2054,7 @@ export const tool_review_submit = tool({
     if (tg.phases.review.tool.completed) {
       throw new Error("tool 层审核报告已提交，不允许重复提交。")
     }
-    if ((tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) || tg.phases.review.quality.completed) {
+    if ((tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) || tg.phases.review.completed) {
       throw new Error("后续层审核报告已提交，tool 层不可再提交。")
     }
     assertPassWithIssues(args.passed, args.issues || [], "opx_tool_review_submit")
@@ -2122,18 +2118,18 @@ export const tool_review_submit = tool({
       })
     }
 
-    tg.phases.review.retryCount++
-    const retryCount = tg.phases.review.retryCount
-    if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
+    const retryResult = handleRetryCheckpoint(tg)
+    if (retryResult === null) {
       await writeState(context.worktree, state)
       return JSON.stringify({
         status: "recorded",
         layer: "tool",
         passed: false,
-        retry_count: retryCount,
+        retry_count: tg.phases.review.retryCount,
         message: "职责已完成，请立即结束当前会话。",
       })
     }
+    const retryCount = retryResult.retryCount
     tg.phases.review.tool.completed = false
     tg.status = "dev_impl"
     await writeState(context.worktree, state)
@@ -2304,18 +2300,18 @@ export const task_review_submit = tool({
       })
     }
 
-    tg.phases.review.retryCount++
-    const retryCount = tg.phases.review.retryCount
-    if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
+    const retryResult = handleRetryCheckpoint(tg)
+    if (retryResult === null) {
       await writeState(context.worktree, state)
       return JSON.stringify({
         status: "recorded",
         layer: "task",
         passed: false,
-        retry_count: retryCount,
+        retry_count: tg.phases.review.retryCount,
         message: "职责已完成，请立即结束当前会话。",
       })
     }
+    const retryCount = retryResult.retryCount
     tg.phases.review.task.completed = false
     tg.status = "dev_impl"
     await writeState(context.worktree, state)
@@ -2369,7 +2365,7 @@ export const quality_review_submit = tool({
     if (!tg.phases.review.task.completed) {
       throw new Error("task 层审核未完成，quality 层不可提交。")
     }
-    if (tg.phases.review.quality.progress[dimension].submitted) {
+    if (tg.phases.review.quality.progress[dimension] !== "pending") {
       throw new Error(`维度 "${dimension}" 的审查报告已提交，不允许重复提交。`)
     }
 
@@ -2422,7 +2418,7 @@ export const quality_review_submit = tool({
       mergeExecutionBoundary(tg, args.boundary_expansion)
     }
 
-    tg.phases.review.quality.progress[dimension] = { submitted: true, passed }
+    tg.phases.review.quality.progress[dimension] = passed ? "passed" : "failed"
     await writeState(context.worktree, state)
     const resultStr = await finalizeQualityPhase(state, tg, dimension, passed, context)
     if (dedupedCount > 0) {
@@ -2444,41 +2440,29 @@ async function finalizeQualityPhase(
   passed: boolean,
   context: { worktree: string },
 ): Promise<string> {
-  const allDims = Object.keys(tg.phases.review.quality.progress) as ReviewDimension[]
-  const submittedDims = dimsWithPendingAction(tg)
-  const requiredDims: ReviewDimension[] =
-    !tg.phases.review.quality.baselineDone
-      ? allDims
-      : allDims.filter((d) => tg.phases.review.quality.progress[d].submitted || submittedDims.has(d))
-  const allSubmitted = requiredDims.every((d) => tg.phases.review.quality.progress[d].submitted)
+  const allDims = [...REVIEW_DIMENSIONS] as ReviewDimension[]
+  const nonPassedDims = allDims.filter(d => tg.phases.review.quality.progress[d] !== "passed")
+  const allDispatchedDone = nonPassedDims.every(d => tg.phases.review.quality.progress[d] !== "pending")
 
-  if (!allSubmitted) {
-    const submittedCount = requiredDims.filter((d) => tg.phases.review.quality.progress[d].submitted).length
-    const totalCount = requiredDims.length
+  if (!allDispatchedDone) {
+    const dispatchedCount = allDims.filter(d => tg.phases.review.quality.progress[d] !== "pending").length
     return JSON.stringify({
       status: "partial",
       dimension,
       dimension_passed: passed,
-      submitted: `${submittedCount}/${totalCount}`,
-      active_dimensions: requiredDims,
+      submitted: `${dispatchedCount}/${allDims.length}`,
+      active_dimensions: nonPassedDims,
       message: `[${dimension}] 已提交。职责已完成，请立即结束当前会话。`,
     })
   }
 
-  // 全维已提交——标识基线建立
-  tg.phases.review.quality.baselineDone = true
-
-  const failedDims: ReviewDimension[] = []
-  for (const d of requiredDims) {
-    if (!tg.phases.review.quality.progress[d].passed) failedDims.push(d)
-  }
+  const failedDims = nonPassedDims.filter(d => tg.phases.review.quality.progress[d] === "failed")
   const hasResidualBlocking = tg.issues.some(
-    (i) => (i.status === "open" || i.status === "rejected" || i.status === "exemption") && isBlockingIssue(i)
+    (i) => (i.status === "open" || i.status === "rejected" || i.status === "exemption_requested") && isBlockingIssue(i)
   )
 
   if (failedDims.length === 0 && !hasResidualBlocking) {
     tg.phases.review.completed = true
-    tg.phases.review.quality.completed = true
     await writeState(context.worktree, state)
     return JSON.stringify({
       status: "ok",
@@ -2487,24 +2471,21 @@ async function finalizeQualityPhase(
     })
   }
 
-  tg.phases.review.retryCount++
-  const retryCount = tg.phases.review.retryCount
-
-  if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
+  const retryResult = handleRetryCheckpoint(tg)
+  if (retryResult === null) {
     await writeState(context.worktree, state)
     return JSON.stringify({
       status: "recorded",
       layer: "quality",
       passed: false,
-      retry_count: retryCount,
+      retry_count: tg.phases.review.retryCount,
       failed_dimensions: failedDims,
       has_residual_blocking: hasResidualBlocking,
       message: "职责已完成，请立即结束当前会话。",
     })
   }
 
-  tg.phases.review.quality.progress = createEmptyQualityProgress()
-  tg.phases.review.quality.completed = false
+  const retryCount = retryResult.retryCount
   tg.status = "dev_impl"
   await writeState(context.worktree, state)
   return JSON.stringify({
@@ -2550,9 +2531,11 @@ export const resolve_review = tool({
       tg.phases.review.lastResolvedRetryCount = tg.phases.review.retryCount
       tg.phases.review.tool.completed = false
       tg.phases.review.task.completed = false
-      tg.phases.review.quality.completed = false
-      tg.phases.review.quality.progress = createEmptyQualityProgress()
-      tg.phases.review.quality.baselineDone = false
+      for (const d of REVIEW_DIMENSIONS) {
+        if (tg.phases.review.quality.progress[d] !== "passed") {
+          tg.phases.review.quality.progress[d] = "pending"
+        }
+      }
       tg.phases.review.completed = false
       tg.status = "dev_impl"
       await writeState(context.worktree, state)
@@ -2571,7 +2554,7 @@ export const resolve_review = tool({
     // giveup
     let exemptedCount = 0
     for (const issue of tg.issues) {
-      if (issue.status === "exemption") {
+      if (issue.status === "exemption_requested") {
         issue.status = "exempted"
         exemptedCount++
       } else if (

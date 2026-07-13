@@ -1704,7 +1704,7 @@ export const arch_submit = tool({
           status: "ok",
           phase: "architect_review=completed",
           execution_boundary: args.execution_boundary,
-          message: "[面向 architect] 复核通过，职责已完成，请立即结束当前会话。\n[面向编排者] 架构师复核通过。请调用 opx_orch_set_worktree 设置 worktree 后分派 openspec-developer。",
+          message: "复核通过，职责已完成，请立即结束当前会话。",
         },
         null,
         2
@@ -1717,7 +1717,7 @@ export const arch_submit = tool({
         phase: "architect_review",
         issue_count: args.issues.length,
         issues: args.issues,
-        message: "[面向 architect] 复核不通过，职责已完成，请立即结束当前会话。\n[面向编排者] ⚠️ 架构师复核不通过，请向用户展示信息缺口问题清单，用 question 询问处理方式。用户答复后再次分派 architect 补全文档，architect 提交 passed=true 后调用 opx_orch_init 同步 state，然后调 set_worktree 进入 dev 阶段。",
+        message: "复核不通过，职责已完成，请立即结束当前会话。",
       },
       null,
       2
@@ -1839,12 +1839,12 @@ export const dev_submit = tool({
       tg.phases.review.quality.progress = createEmptyQualityProgress()
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
-      nextMsg = "请分派各 reviewer 重新审查\n将从 tool 层重新开始审核"
+      nextMsg = "issue 已修复，将从 tool 层重新开始审核"
     } else {
       tg.phases.dev_impl.completed = true
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
-      nextMsg = "请分派 openspec-reviewer-tool 开始 tool review"
+      nextMsg = "实现已提交，进入 review 阶段"
     }
 
     // 自动跳过：baseline 已完成且本轮无待审维度
@@ -1856,7 +1856,7 @@ export const dev_submit = tool({
     // 跳过判定：修复轮无待验证 task 时跳过 task review
     if (allTasksVerified(tg.tasks)) {
       tg.phases.review.task.completed = true
-      nextMsg = "本轮无待验证 task，task 层已自动通过。tool review 完成后直接进入 quality review。"
+      nextMsg = "本轮无待验证 task，task 层已自动通过。"
     }
 
     await writeState(context.worktree, state)
@@ -2131,7 +2131,7 @@ export const tool_review_submit = tool({
         phase: "review(tool=completed)",
         message: `tool 层审核通过。${
           dedupedCount > 0 ? `${dedupedCount} 个重复 issue 已自动跳过；` : ""
-        }请调用 opx_status 获取下一步。`,
+        }`,
       })
     }
 
@@ -2303,7 +2303,7 @@ export const task_review_submit = tool({
       return JSON.stringify({
         status: "ok",
         phase: "review(task=completed)",
-        message: "task 层审核通过。请调用 opx_status 获取下一步。",
+        message: "task 层审核通过。",
       })
     }
 
@@ -2488,7 +2488,7 @@ async function finalizeQualityPhase(
     return JSON.stringify({
       status: "ok",
       phase: "review=completed",
-      message: "全部审查维度通过。请调用 opx_orch_complete_task_group 收尾（合并+清理）。",
+      message: "全部审查维度通过。",
     })
   }
 

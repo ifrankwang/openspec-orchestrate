@@ -861,7 +861,7 @@ describe("11. 守卫 — quality 阶段阻塞 issue", () => {
       const res = JSON.parse(await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
       lastResult = res
     }
-    expect(lastResult.status).toBe("rejected")
+    expect(lastResult.status).toBe("recorded")
     expect(lastResult.failed_dimensions).toBeDefined()
     expect(lastResult.has_residual_blocking).toBe(true)
 
@@ -929,10 +929,10 @@ describe("12. resolve_review — continue / giveup", () => {
         }, toolR))
 
         if (round < 3) {
-          expect(r.status).toBe("rejected")
+          expect(r.status).toBe("recorded")
           expect(r.retry_count).toBe(round)
         } else {
-          expect(r.status).toBe("needs_user_decision")
+          expect(r.status).toBe("recorded")
         }
       }
 
@@ -995,7 +995,7 @@ describe("12. resolve_review — continue / giveup", () => {
         }
         lastRes = JSON.parse(await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
       }
-      expect(lastRes.status).toBe("rejected")
+      expect(lastRes.status).toBe("recorded")
       expect(lastRes.retry_count).toBe(1)
 
       // Rounds 2-3：recovery → quality submit（仅 style 维度）。
@@ -1015,10 +1015,10 @@ describe("12. resolve_review — continue / giveup", () => {
         }, makeCtx("openspec-reviewer-style", wt)))
 
         if (round < 3) {
-          expect(lastRes.status).toBe("rejected")
+          expect(lastRes.status).toBe("recorded")
           expect(lastRes.retry_count).toBe(round)
         } else {
-          expect(lastRes.status).toBe("needs_user_decision")
+          expect(lastRes.status).toBe("recorded")
         }
       }
 
@@ -1498,7 +1498,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
       fixed_issue_ids: [],
       boundary_expansion: { allowed_directories: ["scripts"] },
     }, toolR))
-    expect(res.status).toBe("rejected")
+    expect(res.status).toBe("recorded")
 
     const state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
@@ -1539,7 +1539,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
       fixed_issue_ids: [],
       boundary_expansion: { allowed_packages: ["com.new"] },
     }, toolR))
-    expect(res.status).toBe("rejected")
+    expect(res.status).toBe("recorded")
 
     const state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
@@ -1618,7 +1618,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
       fixed_issue_ids: [],
       issues: [{ severity: "Low", file: "tests/test1.ts", line: 3, description: "Missing test", suggestion: "Add test" }],
     }, taskR))
-    expect(res.status).toBe("rejected")
+    expect(res.status).toBe("recorded")
 
     const state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
@@ -1662,7 +1662,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
       fixed_issue_ids: [],
       boundary_expansion: { allowed_directories: ["infra"] },
     }, taskR))
-    expect(res.status).toBe("rejected")
+    expect(res.status).toBe("recorded")
 
     const state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
@@ -1748,7 +1748,7 @@ describe("17. boundary_expansion — reviewer 声明扩展执行边界", () => {
       fixed_issue_ids: [],
       boundary_expansion: { allowed_directories: ["scripts", "src"] },
     }, toolR))
-    expect(res.status).toBe("rejected")
+    expect(res.status).toBe("recorded")
 
     const state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")

@@ -2131,7 +2131,7 @@ export const tool_review_submit = tool({
         phase: "review(tool=completed)",
         message: `tool 层审核通过。${
           dedupedCount > 0 ? `${dedupedCount} 个重复 issue 已自动跳过；` : ""
-        }进入 task review 层。请分派 openspec-reviewer-task。`,
+        }请调用 opx_status 获取下一步。`,
       })
     }
 
@@ -2140,21 +2140,20 @@ export const tool_review_submit = tool({
     if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
       await writeState(context.worktree, state)
       return JSON.stringify({
-        status: "needs_user_decision",
+        status: "recorded",
         layer: "tool",
+        passed: false,
         retry_count: retryCount,
-        message: `审查重试达到检查点（第 ${retryCount} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
       })
     }
     tg.phases.review.tool.completed = false
     tg.status = "dev_impl"
     await writeState(context.worktree, state)
     return JSON.stringify({
-      status: "rejected",
-      phase: "review→dev_impl",
-      retry_count: retryCount,
+      status: "recorded",
       layer: "tool",
-      message: `tool 层审核不通过（第 ${retryCount} 轮）。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
+      passed: false,
+      retry_count: retryCount,
     })
   },
 })
@@ -2304,7 +2303,7 @@ export const task_review_submit = tool({
       return JSON.stringify({
         status: "ok",
         phase: "review(task=completed)",
-        message: "task 层审核通过。进入 quality review 层。请分派 5 维 reviewer。",
+        message: "task 层审核通过。请调用 opx_status 获取下一步。",
       })
     }
 
@@ -2313,21 +2312,20 @@ export const task_review_submit = tool({
     if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
       await writeState(context.worktree, state)
       return JSON.stringify({
-        status: "needs_user_decision",
+        status: "recorded",
         layer: "task",
+        passed: false,
         retry_count: retryCount,
-        message: `审查重试达到检查点（第 ${retryCount} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
       })
     }
     tg.phases.review.task.completed = false
     tg.status = "dev_impl"
     await writeState(context.worktree, state)
     return JSON.stringify({
-      status: "rejected",
-      phase: "review→dev_impl",
-      retry_count: retryCount,
+      status: "recorded",
       layer: "task",
-      message: `task 层审核不通过（第 ${retryCount} 轮）。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
+      passed: false,
+      retry_count: retryCount,
     })
   },
 })
@@ -2496,17 +2494,16 @@ async function finalizeQualityPhase(
 
   tg.phases.review.retryCount++
   const retryCount = tg.phases.review.retryCount
-  const reason = failedDims.length > 0
-    ? `${failedDims.join(", ")} 未通过`
-    : "存在未解决的 Low+ open/rejected issue"
 
   if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
     await writeState(context.worktree, state)
     return JSON.stringify({
-      status: "needs_user_decision",
+      status: "recorded",
       layer: "quality",
+      passed: false,
       retry_count: retryCount,
-      message: `审查重试达到检查点（第 ${retryCount} 轮）。请编排者调用 \`opx_orch_resolve_review\` 推进（continue / giveup）。`,
+      failed_dimensions: failedDims,
+      has_residual_blocking: hasResidualBlocking,
     })
   }
 
@@ -2515,13 +2512,12 @@ async function finalizeQualityPhase(
   tg.status = "dev_impl"
   await writeState(context.worktree, state)
   return JSON.stringify({
-    status: "rejected",
-    phase: "review→dev_impl",
-    retry_count: retryCount,
+    status: "recorded",
     layer: "quality",
+    passed: false,
+    retry_count: retryCount,
     failed_dimensions: failedDims,
     has_residual_blocking: hasResidualBlocking,
-    message: `quality 层审查不通过（第 ${retryCount} 轮）：${reason}。请分派 openspec-developer 修复后重新提交。将从 tool 层重新开始审核。`,
   })
 }
 

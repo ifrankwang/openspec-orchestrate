@@ -734,8 +734,7 @@ describe("G16. 层失败回退 dev_impl", () => {
     const toolOut = await tool_review_submit.execute({ task_group_id: "1", passed: false, issues: [], fixed_issue_ids: [] }, toolR)
     const r = typeof toolOut === "string" ? toolOut : toolOut.output
     const parsed = JSON.parse(r)
-    expect(parsed.status).toBe("rejected")
-    expect(parsed.phase).toContain("dev_impl")
+    expect(parsed.status).toBe("recorded")
 
     const state2 = readStateSync(wt, CID)
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
@@ -785,8 +784,7 @@ describe("G16. 层失败回退 dev_impl", () => {
     }, taskR)
     const jsonStr = typeof toolOut === "string" ? toolOut : toolOut.output
     const parsed = JSON.parse(jsonStr)
-    expect(parsed.status).toBe("rejected")
-    expect(parsed.phase).toContain("dev_impl")
+    expect(parsed.status).toBe("recorded")
 
     const state2 = readStateSync(wt, CID)
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")

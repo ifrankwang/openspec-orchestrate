@@ -1769,8 +1769,6 @@ export const dev_submit = tool({
     }
     tg.lastFilesChanged = await getDiffFileList(tg.worktreePath, tg.baseRef)
 
-    let nextMsg = ""
-
     let requiredDims: ReviewDimension[] = []
 
     // 统一处理：标记 open/rejected task 为 submitted
@@ -1839,12 +1837,10 @@ export const dev_submit = tool({
       tg.phases.review.quality.progress = createEmptyQualityProgress()
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
-      nextMsg = "issue 已修复，将从 tool 层重新开始审核"
     } else {
       tg.phases.dev_impl.completed = true
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
-      nextMsg = "实现已提交，进入 review 阶段"
     }
 
     // 自动跳过：baseline 已完成且本轮无待审维度
@@ -1856,7 +1852,6 @@ export const dev_submit = tool({
     // 跳过判定：修复轮无待验证 task 时跳过 task review
     if (allTasksVerified(tg.tasks)) {
       tg.phases.review.task.completed = true
-      nextMsg = "本轮无待验证 task，task 层已自动通过。"
     }
 
     await writeState(context.worktree, state)
@@ -1865,10 +1860,7 @@ export const dev_submit = tool({
         status: "ok",
         active_phase: tg.status,
         required_dimensions: requiredDims,
-        message: `提交完成。\n下一步：${nextMsg}` +
-          (tg.status === "review"
-            ? `\n本轮需审查维度（激活集）：${requiredDims.length > 0 ? requiredDims.join(", ") : "(无——所有修复已由既有维度覆盖或仅剩豁免/Info)"}`
-            : ""),
+        message: "提交完成。职责已完成，请立即结束当前会话。",
       },
       null,
       2
@@ -2129,8 +2121,8 @@ export const tool_review_submit = tool({
       return JSON.stringify({
         status: "ok",
         phase: "review(tool=completed)",
-        message: `tool 层审核通过。${
-          dedupedCount > 0 ? `${dedupedCount} 个重复 issue 已自动跳过；` : ""
+        message: `审核通过。职责已完成，请立即结束当前会话。${
+          dedupedCount > 0 ? `${dedupedCount} 个重复 issue 已自动跳过` : ""
         }`,
       })
     }
@@ -2144,6 +2136,7 @@ export const tool_review_submit = tool({
         layer: "tool",
         passed: false,
         retry_count: retryCount,
+        message: "职责已完成，请立即结束当前会话。",
       })
     }
     tg.phases.review.tool.completed = false
@@ -2154,6 +2147,7 @@ export const tool_review_submit = tool({
       layer: "tool",
       passed: false,
       retry_count: retryCount,
+      message: "职责已完成，请立即结束当前会话。",
     })
   },
 })
@@ -2303,7 +2297,7 @@ export const task_review_submit = tool({
       return JSON.stringify({
         status: "ok",
         phase: "review(task=completed)",
-        message: "task 层审核通过。",
+        message: "审核通过。职责已完成，请立即结束当前会话。",
       })
     }
 
@@ -2316,6 +2310,7 @@ export const task_review_submit = tool({
         layer: "task",
         passed: false,
         retry_count: retryCount,
+        message: "职责已完成，请立即结束当前会话。",
       })
     }
     tg.phases.review.task.completed = false
@@ -2326,6 +2321,7 @@ export const task_review_submit = tool({
       layer: "task",
       passed: false,
       retry_count: retryCount,
+      message: "职责已完成，请立即结束当前会话。",
     })
   },
 })
@@ -2466,7 +2462,7 @@ async function finalizeQualityPhase(
       dimension_passed: passed,
       submitted: `${submittedCount}/${totalCount}`,
       active_dimensions: requiredDims,
-      message: `[${dimension}] 已提交（激活维度 ${submittedCount}/${totalCount}）。等待其余激活维度审查报告，全部提交后自动判定整体结果。`,
+      message: `[${dimension}] 已提交。职责已完成，请立即结束当前会话。`,
     })
   }
 
@@ -2488,7 +2484,7 @@ async function finalizeQualityPhase(
     return JSON.stringify({
       status: "ok",
       phase: "review=completed",
-      message: "全部审查维度通过。",
+      message: "全部审查维度通过。职责已完成，请立即结束当前会话。",
     })
   }
 
@@ -2504,6 +2500,7 @@ async function finalizeQualityPhase(
       retry_count: retryCount,
       failed_dimensions: failedDims,
       has_residual_blocking: hasResidualBlocking,
+      message: "职责已完成，请立即结束当前会话。",
     })
   }
 
@@ -2518,6 +2515,7 @@ async function finalizeQualityPhase(
     retry_count: retryCount,
     failed_dimensions: failedDims,
     has_residual_blocking: hasResidualBlocking,
+    message: "职责已完成，请立即结束当前会话。",
   })
 }
 

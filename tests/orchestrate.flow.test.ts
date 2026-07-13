@@ -1211,7 +1211,7 @@ describe("14. Task review auto-skip — issue-fix round", () => {
     }, taskR))
     expect(result.status).toBe("ok")
     expect(result.phase).toBe("review(task=completed)")
-    expect(result.message).toContain("task 层审核通过")
+    expect(result.message).toContain("审核通过")
 
     // --- 6. State reflects auto-completed task layer ---
     state = readStateSync(wt, CID)

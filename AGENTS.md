@@ -13,7 +13,8 @@
 
 ```
 src/index.ts              — 插件入口（注册 opx_* 工具 + opx_skill）
-src/tools/orchestrate.ts  — 全部编排逻辑
+src/tools/orchestrate.ts        — 编排工具 barrel（re-export）
+src/tools/orchestrate/          — 编排逻辑模块目录（types/constants/schemas/git/state/tasks-md/derive/review/views/dashboard/tools-lifecycle/tools-review）
 src/agents/loader.ts      — 从 assets/agents/*.md 注入 agent 配置
 src/skills/tool.ts        — 从 assets/skills/*/SKILL.md 加载内置 skill
 assets/agents/            — agent MD 定义（含 frontmatter）

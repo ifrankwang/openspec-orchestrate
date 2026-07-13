@@ -1,0 +1,648 @@
+import { tool } from "@opencode-ai/plugin"
+import path from "path"
+import type { TaskGroupState, IssueItem, Dimension, ReviewDimension, OrchestrateState } from "./types.js"
+import { REVIEW_DIMENSIONS } from "./types.js"
+import { DIMENSION_AGENT_MAP, MAX_RETRIES, BLOCKING_SEVERITIES, ORCHESTRATOR_AGENT, SEVERITY_LEVELS } from "./constants.js"
+import {
+  architectIssue, executionBoundarySchema, boundaryExpansionSchema, reviewIssue,
+  requestExemptItem, rejectedIssueItem, toolIssueItem, taskVerifyItem, taskVerifyResult,
+} from "./schemas.js"
+import {
+  findTaskGroup, assertOrchestrator, assertAgent, assertPassWithIssues,
+  hasBlockingIssues, isBlockingIssue, handleRetryCheckpoint, allTasksVerified,
+  isReviewCompleted, computeRequiredDims, dimsWithPendingAction,
+} from "./derive.js"
+import { applyReviewGate, deduplicateAndAddIssues, mergeExecutionBoundary, finalizeQualityPhase } from "./review.js"
+import { readStateByWorktree, writeState } from "./state.js"
+import { runGit, runGitChecked, getCurrentBranch, getMergeBase, getDiffFileList, isWorktreeClean, markTaskGroupCheckboxesComplete } from "./git.js"
+
+export const arch_submit = tool({
+  description:
+    "架构师提交复核报告。passed=false 时复核不通过；passed=true 时 execution_boundary 必须提供。",
+  args: {
+    passed: tool.schema.boolean().describe("复核是否通过"),
+    issues: tool.schema.array(architectIssue).describe("问题清单（通过时为空数组）"),
+    execution_boundary: executionBoundarySchema.optional().describe("developer 执行边界（passed=true 时必须提供）"),
+  },
+  async execute(args, context) {
+    assertAgent(context, "opx_arch_submit", ["openspec-architect"])
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    if (tg.status !== "task_analysis") {
+      throw new Error(`阶段顺序错误：task_analysis 当前不在活跃阶段，当前阶段为 "${tg.status}"。`)
+    }
+    assertPassWithIssues(args.passed, args.issues, "opx_arch_submit")
+    if (args.passed) {
+      if (!args.execution_boundary) {
+        throw new Error("passed=true 时必须提供 execution_boundary。")
+      }
+      tg.executionBoundary = args.execution_boundary
+      tg.phases.architect_review.completed = true
+      const changeDir = `openspec/changes/${state.changeId}`
+      const statusResult = await runGitChecked(context.worktree, ["status", "--porcelain", changeDir])
+      if (!statusResult.success) {
+        throw new Error(`git status openspec 文档失败：${statusResult.stderr}`)
+      }
+      if (statusResult.stdout) {
+        const addResult = await runGitChecked(context.worktree, ["add", changeDir])
+        if (!addResult.success) {
+          throw new Error(`git add openspec docs 失败：${addResult.stderr}`)
+        }
+        const commitResult = await runGitChecked(context.worktree, [
+          "commit", "-m", `docs(openspec): refine specs for task-group ${state.taskGroupId}`,
+        ])
+        if (!commitResult.success) {
+          throw new Error(`git commit openspec docs 失败：${commitResult.stderr}`)
+        }
+      }
+      await writeState(context.worktree, state)
+      return JSON.stringify(
+        {
+          status: "ok",
+          phase: "architect_review=completed",
+          execution_boundary: args.execution_boundary,
+          message: "复核通过，职责已完成，请立即结束当前会话。",
+        },
+        null,
+        2
+      )
+    }
+    await writeState(context.worktree, state)
+    return JSON.stringify(
+      {
+        status: "blocked",
+        phase: "architect_review",
+        issue_count: args.issues.length,
+        issues: args.issues,
+        message: "复核不通过，职责已完成，请立即结束当前会话。",
+      },
+      null,
+      2
+    )
+  },
+})
+
+export const dev_submit = tool({
+  description:
+    "developer 提交实现结果。标记 task 为 submitted，或标记 issue 为 submitted（已修复）/ exemption（申请豁免）。",
+  args: {
+    fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("确认修复的 issue ID 列表"),
+    request_exempts: tool.schema.array(requestExemptItem).optional().describe("不可修的 issue 申请豁免"),
+  },
+  async execute(args, context) {
+    assertAgent(context, "opx_dev_submit", ["openspec-developer"])
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    if (tg.status !== "dev_impl" && tg.status !== "review") {
+      throw new Error(`dev_submit 仅在 dev_impl 或 review 阶段可用，当前阶段为 "${tg.status}"。`)
+    }
+    if (!tg.worktreePath || !tg.baseRef) {
+      throw new Error("worktree 或 baseRef 未设置，请编排者先调用 opx_orch_set_worktree。")
+    }
+    const clean = await isWorktreeClean(tg.worktreePath)
+    if (!clean) {
+      throw new Error(`worktree "${tg.worktreePath}" 存在未 commit 内容，请先 commit 再 submit。`)
+    }
+    tg.lastFilesChanged = await getDiffFileList(tg.worktreePath, tg.baseRef)
+
+    let requiredDims: ReviewDimension[] = []
+
+    for (const task of tg.tasks) {
+      if (task.status === "open" || task.status === "rejected") task.status = "submitted"
+    }
+    const remainingTasks = tg.tasks.filter(
+      (t) => t.status === "open" || t.status === "rejected"
+    )
+    if (remainingTasks.length > 0) {
+      throw new Error(
+        `存在 ${remainingTasks.length} 个 open/rejected task 未完成，无法提交：` +
+          remainingTasks.map((t) => `#${t.id} ${t.title}`).join("; ")
+      )
+    }
+
+    let touchedAnyIssue = false
+    const fixedIds = args.fixed_issue_ids || []
+    for (const id of fixedIds) {
+      const issue = tg.issues.find((i) => i.id === id)
+      if (issue && (issue.status === "open" || issue.status === "rejected")) {
+        issue.status = "submitted"
+        touchedAnyIssue = true
+      }
+    }
+
+    const requestedIds: string[] = []
+    for (const r of args.request_exempts || []) {
+      const issue = tg.issues.find((i) => i.id === r.issue_id)
+      if (!issue) throw new Error(`issue #${r.issue_id} 不在任务组 ${state.taskGroupId} 的 issue 清单中。`)
+      if (issue.status === "exempted") {
+        throw new Error(`issue #${r.issue_id} 已被豁免，无需重复申请。`)
+      }
+      if (issue.status === "rejected") {
+        throw new Error(`issue #${r.issue_id} 的豁免申请已被驳回，必须修复，不可二次申请豁免。`)
+      }
+      if (issue.status === "verified") {
+        throw new Error(`issue #${r.issue_id} 已通过验证，无需申请豁免。`)
+      }
+      issue.status = "exemption_requested"
+      issue.exemptReason = r.reason
+      requestedIds.push(r.issue_id)
+      touchedAnyIssue = true
+    }
+
+    const remainingBlocking = tg.issues.filter(
+      (i) => (i.status === "open" || i.status === "rejected") && (BLOCKING_SEVERITIES as readonly string[]).includes(i.severity)
+    )
+    if (remainingBlocking.length > 0) {
+      throw new Error(
+        `存在 ${remainingBlocking.length} 个 Low 及以上的 open/rejected issue 未处理，无法提交（请逐条修复或申请豁免）：` +
+          remainingBlocking.map((i) => `#${i.id}(${i.severity}/${i.dimension})`).join("; ")
+      )
+    }
+
+    if (touchedAnyIssue) {
+      tg.phases.review.tool.completed = false
+      tg.phases.review.task.completed = false
+      for (const d of REVIEW_DIMENSIONS) {
+        if (dimsWithPendingAction(tg).has(d)) {
+          tg.phases.review.quality.progress[d] = "pending"
+        }
+      }
+      tg.status = "review"
+      requiredDims = computeRequiredDims(tg)
+    } else {
+      tg.status = "review"
+      requiredDims = computeRequiredDims(tg)
+    }
+
+    if (allTasksVerified(tg.tasks)) {
+      tg.phases.review.task.completed = true
+    }
+
+    await writeState(context.worktree, state)
+    return JSON.stringify(
+      {
+        status: "ok",
+        active_phase: tg.status,
+        required_dimensions: requiredDims,
+        message: "提交完成。职责已完成，请立即结束当前会话。",
+      },
+      null,
+      2
+    )
+  },
+})
+
+export const tool_review_submit = tool({
+  description:
+    "工具审核层提交。跨维提交 tool issues（issues 自带 dimension 字段），含 UT 结果。调用者必须为 openspec-reviewer-tool。",
+  args: {
+    passed: tool.schema.boolean().describe("工具层是否通过"),
+    issues: tool.schema.array(toolIssueItem).optional().describe("跨维 issue，每个 item 需带 dimension"),
+    fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
+    exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
+    rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
+    test_results: tool.schema.string().optional().describe("UT 运行结果摘要"),
+    boundary_expansion: boundaryExpansionSchema.optional().describe("执行边界扩展（仅 passed=false 时有效）"),
+  },
+  async execute(args, context) {
+    assertAgent(context, "opx_tool_review_submit", ["openspec-reviewer-tool"])
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    if (tg.status !== "review") {
+      throw new Error(`tool_review_submit 需在 review 阶段调用，当前阶段为 "${tg.status}"。`)
+    }
+    if (tg.phases.review.tool.completed) {
+      throw new Error("tool 层审核报告已提交，不允许重复提交。")
+    }
+    if ((tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) || isReviewCompleted(tg)) {
+      throw new Error("后续层审核报告已提交，tool 层不可再提交。")
+    }
+    assertPassWithIssues(args.passed, args.issues || [], "opx_tool_review_submit")
+
+    const issues = (args.issues || []) as any[]
+    for (const iss of issues) {
+      if (!iss.dimension || !REVIEW_DIMENSIONS.includes(iss.dimension)) {
+        throw new Error(`tool issue 必须包含有效的 dimension 字段（5 维之一），收到：${iss.dimension}。`)
+      }
+    }
+
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], undefined, "tool")
+
+    let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
+    const newIssues: IssueItem[] = []
+    let dedupedCount = 0
+    for (const iss of issues) {
+      const dim = iss.dimension as Dimension
+      const dedupResult = deduplicateAndAddIssues([iss], tg.issues, dim, "tool", nextIssueId)
+      if (dedupResult.dedupedCount > 0) { dedupedCount++; continue }
+      if (dedupResult.newIssues.length > 0) {
+        newIssues.push(dedupResult.newIssues[0])
+        nextIssueId = dedupResult.nextIssueId
+      }
+    }
+    tg.issues.push(...newIssues)
+
+    if (tg.executionBoundary && newIssues.length > 0) {
+      const dirs = tg.executionBoundary.allowed_directories
+      for (const iss of newIssues) {
+        const dir = path.dirname(iss.file)
+        const entry = dir === "" || dir === "." ? iss.file : dir
+        if (entry !== "." && entry !== "" && !dirs.includes(entry)) dirs.push(entry)
+      }
+    }
+
+    if (tg.executionBoundary && args.boundary_expansion) {
+      if (args.passed) {
+        throw new Error("passed=true 时不允许边界扩展。boundary_expansion 仅 passed=false 有效。")
+      }
+      mergeExecutionBoundary(tg, args.boundary_expansion)
+    }
+
+    tg.phases.review.tool.completed = true
+    if (args.test_results) tg.phases.review.tool.testResults = args.test_results
+    await writeState(context.worktree, state)
+
+    const hasBlocking = hasBlockingIssues(tg.issues, "tool")
+    if (args.passed && !hasBlocking) {
+      return JSON.stringify({
+        status: "ok",
+        phase: "review(tool=completed)",
+        message: `审核通过。职责已完成，请立即结束当前会话。${
+          dedupedCount > 0 ? `${dedupedCount} 个重复 issue 已自动跳过` : ""
+        }`,
+      })
+    }
+
+    const retryResult = handleRetryCheckpoint(tg)
+    if (retryResult === null) {
+      await writeState(context.worktree, state)
+      return JSON.stringify({
+        status: "recorded",
+        layer: "tool",
+        passed: false,
+        retry_count: tg.phases.review.retryCount,
+        message: "职责已完成，请立即结束当前会话。",
+      })
+    }
+    const retryCount = retryResult.retryCount
+    tg.phases.review.tool.completed = false
+    tg.status = "dev_impl"
+    await writeState(context.worktree, state)
+    const blockingIssues = tg.issues.filter(
+      (i) => (!i.sourcePhase || i.sourcePhase === "tool") && isBlockingIssue(i)
+    )
+    const issueSummary = blockingIssues.slice(0, 3)
+      .map((i) => `#${i.id}(dimension:${i.dimension} status:${i.status || "open"})`)
+      .join("、")
+    return JSON.stringify({
+      status: "recorded",
+      layer: "tool",
+      passed: false,
+      retry_count: retryCount,
+      message: `职责已完成，请立即结束当前会话。因遗留跨层阻塞 issue ${issueSummary} 等 ${blockingIssues.length} 个，需回退开发。`,
+    })
+  },
+})
+
+export const task_review_submit = tool({
+  description:
+    "任务审核层提交。验证 task 产出、服务启动、接口可用性、测试代码审查。调用者必须为 openspec-reviewer-task。",
+  args: {
+    passed: tool.schema.boolean().describe("任务层是否通过"),
+    verified_task_ids: tool.schema.array(tool.schema.string()).optional().describe("已验证完成的 task ID 列表"),
+    failed_task_ids: tool.schema.array(taskVerifyResult).optional().describe("未完成的 task 列表（含原因）"),
+    issues: tool.schema.array(reviewIssue).optional().describe("测试代码审查 issue"),
+    fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
+    exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
+    rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
+    boundary_expansion: boundaryExpansionSchema.optional().describe("执行边界扩展（仅 passed=false 时有效）"),
+  },
+  async execute(args, context) {
+    assertAgent(context, "opx_task_review_submit", ["openspec-reviewer-task"])
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    if (tg.status !== "review") {
+      throw new Error(`task_review_submit 需在 review 阶段调用，当前阶段为 "${tg.status}"。`)
+    }
+    if (!tg.phases.review.tool.completed) {
+      throw new Error("tool 层审核未完成，task 层不可提交。")
+    }
+    if (tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) {
+      throw new Error("task 层审核报告已提交，不允许重复提交。")
+    }
+
+    const verified = args.verified_task_ids || []
+    const failed = args.failed_task_ids || []
+    const tasks = tg.tasks
+    const validIds = new Set(tasks.map((t) => t.id))
+    const unknownVerified = verified.filter((id) => !validIds.has(id))
+    const unknownFailed = failed.filter((f) => !validIds.has(f.task_id))
+    if (unknownVerified.length > 0 || unknownFailed.length > 0) {
+      throw new Error(
+        `非法 task id：${[...unknownVerified.map((id) => `"${id}"`), ...unknownFailed.map((f) => `"${f.task_id}"`)].join(", ")}。` +
+        `合法 id：${Array.from(validIds).join(", ")}。`
+      )
+    }
+
+    const submittedTasks = tasks.filter((t) => t.status === "submitted")
+    const coveredIds = new Set([...verified, ...failed.map((f) => f.task_id)])
+    const uncovered = submittedTasks.filter((t) => !coveredIds.has(t.id))
+    if (uncovered.length > 0) {
+      throw new Error(
+        `以下 submitted task 未被 verified_task_ids 或 failed_task_ids 覆盖：` +
+        uncovered.map((t) => `#${t.id} ${t.title}`).join("; ")
+      )
+    }
+
+    for (const id of verified) {
+      const task = tasks.find((t) => t.id === id)
+      if (task && task.status === "submitted") { task.status = "verified" }
+    }
+    for (const f of failed) {
+      const task = tasks.find((t) => t.id === f.task_id)
+      if (task && task.status === "submitted") {
+        task.status = "rejected"
+        task.rejectReason = f.reason
+      }
+    }
+
+    const rawIssues = (args.issues || []) as any[]
+    let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
+    const taskNewIssues: IssueItem[] = []
+    for (const iss of rawIssues) {
+      const dedupResult = deduplicateAndAddIssues(
+        [iss], tg.issues,
+        "style" as Dimension, "task",
+        nextIssueId
+      )
+      if (dedupResult.dedupedCount > 0) continue
+      if (dedupResult.newIssues.length > 0) {
+        tg.issues.push(dedupResult.newIssues[0])
+        taskNewIssues.push(dedupResult.newIssues[0])
+        nextIssueId = dedupResult.nextIssueId
+      }
+    }
+
+    assertPassWithIssues(args.passed, args.issues || [], "opx_task_review_submit")
+
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], undefined, "task")
+
+    if (tg.executionBoundary) {
+      if (taskNewIssues.length > 0) {
+        const dirs = tg.executionBoundary.allowed_directories
+        for (const iss of taskNewIssues) {
+          const dir = path.dirname(iss.file)
+          const entry = dir === "" || dir === "." ? iss.file : dir
+          if (entry !== "." && entry !== "" && !dirs.includes(entry)) dirs.push(entry)
+        }
+      }
+      if (args.boundary_expansion) {
+        if (args.passed) {
+          throw new Error("passed=true 时不允许边界扩展。boundary_expansion 仅 passed=false 有效。")
+        }
+        mergeExecutionBoundary(tg, args.boundary_expansion)
+      }
+    }
+
+    if (args.passed) {
+      if (failed.length > 0) {
+        throw new Error(`任务层审核声称 passed=true，但存在 ${failed.length} 个未通过的 task。`)
+      }
+      if (hasBlockingIssues(tg.issues, "task")) {
+        const blockingIssues = tg.issues.filter(
+          (i) => (!i.sourcePhase || i.sourcePhase === "task") && isBlockingIssue(i)
+        )
+        const issueSummary = blockingIssues.slice(0, 3)
+          .map((i) => `#${i.id}(dimension:${i.dimension} status:${i.status || "open"})`)
+          .join("、")
+        throw new Error(`任务层审核声称 passed=true，但存在阻塞 issue：${issueSummary} 等 ${blockingIssues.length} 个。`)
+      }
+    }
+    if (!args.passed && failed.length === 0) {
+      throw new Error(
+        `任务层审核声称 passed=false，但 failed_task_ids 为空。` +
+        `passed=false 时必须至少指定一个 failed_task_id 标记不通过的 task。`
+      )
+    }
+
+    tg.phases.review.task.completed = true
+    await writeState(context.worktree, state)
+
+    if (args.passed) {
+      if (tg.worktreePath) {
+        await markTaskGroupCheckboxesComplete(tg.worktreePath, state.changeId, state.taskGroupId)
+      }
+      return JSON.stringify({
+        status: "ok",
+        phase: "review(task=completed)",
+        message: "审核通过。职责已完成，请立即结束当前会话。",
+      })
+    }
+
+    const retryResult = handleRetryCheckpoint(tg)
+    if (retryResult === null) {
+      await writeState(context.worktree, state)
+      return JSON.stringify({
+        status: "recorded",
+        layer: "task",
+        passed: false,
+        retry_count: tg.phases.review.retryCount,
+        message: "职责已完成，请立即结束当前会话。",
+      })
+    }
+    const retryCount = retryResult.retryCount
+    tg.phases.review.task.completed = false
+    tg.status = "dev_impl"
+    await writeState(context.worktree, state)
+    return JSON.stringify({
+      status: "recorded",
+      layer: "task",
+      passed: false,
+      retry_count: retryCount,
+      message: "职责已完成，请立即结束当前会话。",
+    })
+  },
+})
+
+export const quality_review_submit = tool({
+  description:
+    "AI 语义审查层提交。维度由调用者身份自动识别。调用者必须为 openspec-reviewer-{style|architecture|performance|security|maintainability}。",
+  args: {
+    passed: tool.schema.boolean().describe("本维度是否通过"),
+    issues: tool.schema.array(reviewIssue).optional().describe("新报审查 issue"),
+    fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
+    exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
+    rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
+    boundary_expansion: boundaryExpansionSchema.optional().describe("执行边界扩展（仅 passed=false 时有效）"),
+  },
+  async execute(args, context) {
+    const agentToDim = Object.fromEntries(
+      Object.entries(DIMENSION_AGENT_MAP).map(([dim, agent]) => [agent, dim])
+    )
+    const dimension = agentToDim[context.agent] as Dimension | undefined
+    if (!dimension) {
+      throw new Error(
+        `工具 "opx_quality_review_submit" 不支持调用者 "${context.agent}"。` +
+        `仅支持：${Object.values(DIMENSION_AGENT_MAP).join(", ")}。`
+      )
+    }
+    if (typeof args.passed !== "boolean" && args.passed !== "true" && args.passed !== "false") {
+      throw new Error(
+        `参数 passed 必须为布尔值（true/false），收到类型 "${typeof args.passed}"，值 "${args.passed}"。`
+      )
+    }
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    if (tg.status !== "review") {
+      throw new Error(`quality_review_submit 需在 review 阶段调用，当前阶段为 "${tg.status}"。`)
+    }
+    if (!tg.phases.review.task.completed) {
+      throw new Error("task 层审核未完成，quality 层不可提交。")
+    }
+    if (tg.phases.review.quality.progress[dimension] !== "pending") {
+      throw new Error(`维度 "${dimension}" 的审查报告已提交，不允许重复提交。`)
+    }
+
+    const passed = args.passed === true || (args.passed as any) === "true"
+    const issues = (args.issues || []) as any[]
+    assertPassWithIssues(passed, issues, "opx_quality_review_submit")
+
+    for (const iss of issues) {
+      if (!iss.suggestion || typeof iss.suggestion !== "string" || iss.suggestion.trim() === "") {
+        throw new Error(`dimension="${dimension}" 的 issue 必须提供非空 suggestion。`)
+      }
+    }
+
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], dimension, "quality")
+
+    let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
+    const newIssues: IssueItem[] = []
+    let dedupedCount = 0
+    for (const iss of issues) {
+      const dedupResult = deduplicateAndAddIssues(
+        [iss], tg.issues, dimension, "quality",
+        nextIssueId
+      )
+      if (dedupResult.dedupedCount > 0) { dedupedCount++; continue }
+      if (dedupResult.newIssues.length > 0) {
+        newIssues.push(dedupResult.newIssues[0])
+        nextIssueId = dedupResult.nextIssueId
+      }
+    }
+    tg.issues.push(...newIssues)
+
+    if (tg.executionBoundary && newIssues.length > 0) {
+      const dirs = tg.executionBoundary.allowed_directories
+      for (const iss of newIssues) {
+        const dir = path.dirname(iss.file)
+        const entry = dir === "" || dir === "." ? iss.file : dir
+        if (entry !== "." && entry !== "" && !dirs.includes(entry)) dirs.push(entry)
+      }
+    }
+
+    if (tg.executionBoundary && args.boundary_expansion) {
+      if (args.passed) {
+        throw new Error("passed=true 时不允许边界扩展。boundary_expansion 仅 passed=false 有效。")
+      }
+      mergeExecutionBoundary(tg, args.boundary_expansion)
+    }
+
+    tg.phases.review.quality.progress[dimension] = passed ? "passed" : "failed"
+    await writeState(context.worktree, state)
+    const resultStr = await finalizeQualityPhase(state, tg, dimension, passed, context)
+    if (dedupedCount > 0) {
+      const result = JSON.parse(resultStr)
+      result.deduped = dedupedCount
+      result.message = result.message.replace(/([。！])\s*$/, `；${dedupedCount} 个重复 issue 已自动跳过。`)
+      return JSON.stringify(result)
+    }
+    return resultStr
+  },
+})
+
+export const resolve_review = tool({
+  description:
+    "编排者在 review 阶段重试超上限（needs_user_decision）后，根据用户决策推进。decision=continue：重置审查进度后继续修复；decision=giveup：将剩余待审 issue 置为 exempted 后完成。",
+  args: {
+    decision: tool.schema
+      .enum(["continue", "giveup"])
+      .describe("continue=继续修复；giveup=放弃"),
+  },
+  async execute(args, context) {
+    assertOrchestrator(context, "opx_orch_resolve_review")
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    if (tg.status !== "review") {
+      throw new Error(`opx_orch_resolve_review 仅在 review 阶段可用，当前阶段为 "${tg.status}"。`)
+    }
+    const maxLayerRetry = tg.phases.review.retryCount
+    if (maxLayerRetry === 0 || maxLayerRetry % MAX_RETRIES !== 0) {
+      throw new Error(
+        `opx_orch_resolve_review 仅在审查重试达到检查点（retryCount 为 ${MAX_RETRIES} 的整数倍，needs_user_decision 状态）时调用；` +
+          `当前 retryCount=${tg.phases.review.retryCount}。`
+      )
+    }
+
+    if (args.decision === "continue") {
+      tg.phases.review.lastResolvedRetryCount = tg.phases.review.retryCount
+      tg.phases.review.tool.completed = false
+      tg.phases.review.task.completed = false
+      for (const d of REVIEW_DIMENSIONS) {
+        if (tg.phases.review.quality.progress[d] !== "passed") {
+          tg.phases.review.quality.progress[d] = "pending"
+        }
+      }
+      tg.status = "dev_impl"
+      await writeState(context.worktree, state)
+      return JSON.stringify(
+        {
+          status: "ok",
+          decision: "continue",
+          phase: "review(in_progress)",
+          message: "已重置各层审查进度，回到 tool 层基线。请分派 openspec-developer 修复后调用 opx_dev_submit。",
+        },
+        null,
+        2
+      )
+    }
+
+    let exemptedCount = 0
+    for (const issue of tg.issues) {
+      if (issue.status === "exemption_requested") {
+        issue.status = "exempted"
+        exemptedCount++
+      } else if (
+        (issue.status === "open" || issue.status === "rejected" || issue.status === "submitted") &&
+        isBlockingIssue(issue)
+      ) {
+        issue.status = "exempted"
+        exemptedCount++
+      }
+    }
+    tg.phases.review.tool.completed = true
+    tg.phases.review.task.completed = true
+    for (const d of REVIEW_DIMENSIONS) {
+      if (tg.phases.review.quality.progress[d] !== "passed") {
+        tg.phases.review.quality.progress[d] = "passed"
+      }
+    }
+    await writeState(context.worktree, state)
+    return JSON.stringify(
+      {
+        status: "ok",
+        decision: "giveup",
+        exempted_count: exemptedCount,
+        phase: "review=completed",
+        message: `已将剩余 ${exemptedCount} 个 Low+ open/rejected 及待裁定 issue 置为 exempted。请调用 opx_orch_complete_task_group 收尾。`,
+      },
+      null,
+      2
+    )
+  },
+})

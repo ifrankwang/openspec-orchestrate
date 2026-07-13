@@ -153,10 +153,9 @@ interface ReviewPhaseData {
   completed: boolean
   retryCount: number
   lastResolvedRetryCount: number
-  qualityBaselineDone: boolean
   tool: ReviewLayerData
   task: ReviewLayerData
-  quality: ReviewLayerData & { progress: QualityLayerProgress }
+  quality: ReviewLayerData & { progress: QualityLayerProgress; baselineDone: boolean }
 }
 
 interface SimplePhaseData {
@@ -204,10 +203,9 @@ function createEmptyPhases(): Phases {
       completed: false,
       retryCount: 0,
       lastResolvedRetryCount: 0,
-      qualityBaselineDone: false,
       tool: { completed: false },
       task: { completed: false },
-      quality: { completed: false, progress: createEmptyQualityProgress() },
+      quality: { completed: false, progress: createEmptyQualityProgress(), baselineDone: false },
     },
   }
 }
@@ -264,10 +262,10 @@ function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
 }
 
 // 派生本轮需审查的维度集（不持久化）：
-// qualityBaselineDone=false 时全部维度建基线；修复轮仅含存在 submitted/exemption issue 的维度。
+// quality.baselineDone=false 时全部维度建基线；修复轮仅含存在 submitted/exemption issue 的维度。
 function computeRequiredDims(tg: TaskGroupState): ReviewDimension[] {
   const all = [...REVIEW_DIMENSIONS] as ReviewDimension[]
-  if (!tg.phases.review.qualityBaselineDone) return all
+  if (!tg.phases.review.quality.baselineDone) return all
   const dims = dimsWithPendingAction(tg)
   return all.filter((d) => dims.has(d))
 }
@@ -1220,7 +1218,7 @@ export const init = tool({
           tgIssues = [...existing.issues]
           // 保留 review layer 进度
           phases.review.retryCount = existing.phases.review.retryCount
-          phases.review.qualityBaselineDone = existing.phases.review.qualityBaselineDone
+          phases.review.quality.baselineDone = existing.phases.review.quality.baselineDone
           phases.review.tool = existing.phases.review.tool
           phases.review.task = existing.phases.review.task
           phases.review.quality = existing.phases.review.quality
@@ -1232,7 +1230,7 @@ export const init = tool({
           tgIssues = existing?.issues ?? []
           if (existing && args.recovery) {
             phases.review.retryCount = existing.phases.review.retryCount
-            phases.review.qualityBaselineDone = existing.phases.review.qualityBaselineDone
+            phases.review.quality.baselineDone = existing.phases.review.quality.baselineDone
             phases.review.tool = existing.phases.review.tool
             phases.review.task = existing.phases.review.task
             phases.review.quality = existing.phases.review.quality
@@ -1249,7 +1247,7 @@ export const init = tool({
             phases.review.task.completed = true
             phases.review.retryCount = 0
             phases.review.quality.progress = createEmptyQualityProgress()
-            phases.review.qualityBaselineDone = false
+            phases.review.quality.baselineDone = false
           }
         }
 
@@ -1532,7 +1530,7 @@ export const status = tool({
     // 兜底：baseline 已建但无待审维度 — 自动收尾
     if (
       tg.status === "review" &&
-      tg.phases.review.qualityBaselineDone &&
+      tg.phases.review.quality.baselineDone &&
       !tg.phases.review.quality.completed &&
       deriveCurrentAgents(tg).length === 0
     ) {
@@ -1856,7 +1854,7 @@ export const dev_submit = tool({
     }
 
     // 自动跳过：baseline 已完成且本轮无待审维度
-    if (tg.phases.review.qualityBaselineDone && requiredDims.length === 0) {
+    if (tg.phases.review.quality.baselineDone && requiredDims.length === 0) {
       tg.phases.review.quality.completed = true
       tg.phases.review.completed = true
     }
@@ -2462,7 +2460,7 @@ async function finalizeQualityPhase(
   const allDims = Object.keys(tg.phases.review.quality.progress) as ReviewDimension[]
   const submittedDims = dimsWithPendingAction(tg)
   const requiredDims: ReviewDimension[] =
-    !tg.phases.review.qualityBaselineDone
+    !tg.phases.review.quality.baselineDone
       ? allDims
       : allDims.filter((d) => tg.phases.review.quality.progress[d].submitted || submittedDims.has(d))
   const allSubmitted = requiredDims.every((d) => tg.phases.review.quality.progress[d].submitted)
@@ -2481,7 +2479,7 @@ async function finalizeQualityPhase(
   }
 
   // 全维已提交——标识基线建立
-  tg.phases.review.qualityBaselineDone = true
+  tg.phases.review.quality.baselineDone = true
 
   const failedDims: ReviewDimension[] = []
   for (const d of requiredDims) {
@@ -2573,7 +2571,7 @@ export const resolve_review = tool({
       tg.phases.review.task.completed = false
       tg.phases.review.quality.completed = false
       tg.phases.review.quality.progress = createEmptyQualityProgress()
-      tg.phases.review.qualityBaselineDone = false
+      tg.phases.review.quality.baselineDone = false
       tg.phases.review.completed = false
       tg.status = "dev_impl"
       await writeState(context.worktree, state)

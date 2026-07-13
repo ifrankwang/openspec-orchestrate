@@ -963,7 +963,7 @@ describe("B7. computeRequiredDims 异常回退", () => {
     const state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     tg.phases.review.retryCount = 2
-    tg.phases.review.qualityBaselineDone = true
+    tg.phases.review.quality.baselineDone = true
     tg.phases.review.quality.progress = {
       style: { submitted: false, passed: false },
       architecture: { submitted: false, passed: false },
@@ -995,7 +995,7 @@ describe("B7. computeRequiredDims 异常回退", () => {
 // ════════════════════════════════════════════════════════════════
 
 describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
-  test("retryCount=2, qualityBaselineDone=false → 全部 5 维可过 gate", async () => {
+  test("retryCount=2, baselineDone=false → 全部 5 维可过 gate", async () => {
     const root = `/tmp/optimize-b9a-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -1007,7 +1007,7 @@ describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
     let state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     tg.phases.review.retryCount = 2
-    // qualityBaselineDone 保持 false（新建状态本来就没有该字段，undefined→falsy）
+    // baselineDone 保持 false（新建状态本来就没有该字段，undefined→falsy）
     writeFileSync(
       join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
       JSON.stringify(state, null, 2)
@@ -1033,13 +1033,13 @@ describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
 
     state = readStateSync(wt, CID)
     const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tgAfter.phases.review.qualityBaselineDone).toBe(true)
+    expect(tgAfter.phases.review.quality.baselineDone).toBe(true)
     expect(tgAfter.phases.review.completed).toBe(true)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 
-  test("retryCount=0, qualityBaselineDone=true → 空激活集", async () => {
+  test("retryCount=0, baselineDone=true → 空激活集", async () => {
     const root = `/tmp/optimize-b9b-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -1050,7 +1050,7 @@ describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
     // 模拟 quality 基线已完成，无 pending issue
     let state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
-    tg.phases.review.qualityBaselineDone = true
+    tg.phases.review.quality.baselineDone = true
     tg.phases.review.retryCount = 0
     writeFileSync(
       join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),

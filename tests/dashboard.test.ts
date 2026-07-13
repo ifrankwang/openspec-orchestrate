@@ -40,7 +40,6 @@ const mockState = {
           completed: false,
           retryCount: 0,
           lastResolvedRetryCount: 0,
-          qualityBaselineDone: false,
           tool: { completed: false },
           task: { completed: false },
           quality: {
@@ -52,6 +51,7 @@ const mockState = {
               security: { submitted: false, passed: false },
               maintainability: { submitted: false, passed: false },
             },
+            baselineDone: false,
           },
         },
       },

@@ -112,7 +112,7 @@ code,.mono{font-family:var(--mono)}
 .card-sb.exempted{background:var(--gray-bg);color:var(--text-muted)}
 .card-meta-tag{display:inline-flex;align-items:center;gap:2px;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;line-height:1.3}
 .card-meta-tag.refix{color:var(--red);background:rgba(207,34,46,0.1)}
-.card-meta-tag.known{color:var(--yellow);background:var(--yellow-bg)}
+
 .card-divider{height:1px;background:var(--border);margin:8px 0 6px;border:none;flex-basis:100%}
 .card-body{font-size:12px}
 .card-row{display:flex;gap:4px;margin-top:3px}
@@ -344,7 +344,6 @@ function renderIssueCards(issues, filter) {
     var dimLabel = dimLabels[issue.dimension] || issue.dimension
     var statusLabel = issueStatusLabels[issue.status] || issue.status
     var refix = issue.refixCount > 0 ? '<span class="card-meta-tag refix">\u00d7' + issue.refixCount + '</span>' : ''
-    var known = issue.isKnownIssue ? '<span class="card-meta-tag known"><i data-lucide="check" class="icon-badge"></i> \u5df2\u77e5</span>' : ''
     html += '<div class="card"><div class="card-header">'
       + '<div class="card-hl">'
       + '<span class="card-id">#' + issue.id + '</span>'
@@ -354,7 +353,7 @@ function renderIssueCards(issues, filter) {
       + '</div>'
       + '<div class="card-hr">'
       + '<span class="card-sb ' + issue.status + '">' + statusLabel + '</span>'
-      + refix + known
+      + refix
       + '</div>'
       + '</div>'
       + '<div class="card-divider"></div>'

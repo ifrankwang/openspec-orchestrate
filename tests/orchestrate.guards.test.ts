@@ -689,8 +689,13 @@ describe("G15. 豁免完整性门禁", () => {
       recovery: { phase: "review", worktree_path: tg3.worktreePath, branch_name: tg3.branchName, preserve_progress: true },
     }, o)
 
+    // tool 层仅看到 sourcePhase="tool" 的 exemption，quality 层 issue 的 exemption 跳过
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    // task 层仅看到 sourcePhase="task" 的 exemption，同样跳过
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+    // quality（style）层必须处理自己维度的 exemption 才能提交
     await expect(
-      tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+      quality_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, makeCtx("openspec-reviewer-style", wt))
     ).rejects.toThrow(/未被 fixed_issue_ids、exempt_issue_ids 或 rejected_issue_ids 覆盖/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}

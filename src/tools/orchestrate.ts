@@ -127,6 +127,7 @@ interface TaskItem {
 interface IssueItem {
   id: string
   dimension: Dimension
+  sourcePhase: "tool" | "task" | "quality"
   severity: string
   file: string
   line: number
@@ -138,7 +139,6 @@ interface IssueItem {
   rootCauseGuess: string | null
   exemptReason: string | null
   rejectReason: string | null
-  isKnownIssue: boolean
 }
 
 interface DimensionProgress {
@@ -645,7 +645,7 @@ function sortIssuesByCategory(issues: IssueItem[]): IssueItem[] {
 
 function renderIssueItem(i: IssueItem): string {
   const lines: string[] = []
-  lines.push(`- Issue #${i.id} | ${i.severity} | ${i.dimension}`)
+  lines.push(`- Issue #${i.id} | ${i.severity} | ${i.dimension} | [${i.sourcePhase}]`)
   lines.push(`  - 文件：${i.file}${i.line > 0 ? `:${i.line}` : ""}`)
   lines.push(`  - 描述：${i.description}`)
   if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
@@ -990,7 +990,7 @@ function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): stri
   lines.push("")
   lines.push("## 全部 Issue（tool 层可见）", "")
   const allIssues = tg.issues.filter(
-    (i) => i.status === "open" || i.status === "submitted" || i.status === "exemption"
+    (i) => i.sourcePhase === "tool" && (i.status === "open" || i.status === "submitted" || i.status === "exemption")
   )
   if (allIssues.length === 0) lines.push("- (无)")
   else for (const i of sortIssuesByCategory(allIssues)) {
@@ -1035,7 +1035,7 @@ function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState): stri
   }
   lines.push("")
   const taskIssues = tg.issues.filter(
-    (i) => i.status === "open" || i.status === "submitted" || i.status === "exemption"
+    (i) => i.sourcePhase === "task" && (i.status === "open" || i.status === "submitted" || i.status === "exemption")
   )
   if (taskIssues.length > 0) {
     lines.push("## 审查 Issue", "")
@@ -1067,27 +1067,15 @@ function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupState, ag
     "> 回归排查：对照上述「上轮变更文件」，检查本次修复是否在本维度引入了新问题；发现即在本维度报新 issue。",
     ""
   )
-  // 已知问题（tool 层已识别）
-  const knownIssues = tg.issues.filter(
-    (i) => i.dimension === dimension && i.isKnownIssue
-  )
-  if (knownIssues.length > 0) {
-    lines.push("## 已知问题（tool 层已识别）", "")
-    for (const i of knownIssues) lines.push(renderIssueItem(i))
-    lines.push(
-      "> 以上问题由 tool 层识别。如本次修复后仍存在，请重新报本维度问题；如已修复，请在 fixed_issue_ids 中确认。",
-      ""
-    )
-  }
   const openIssues = tg.issues.filter(
-    (i) => i.dimension === dimension && i.status === "open"
+    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "open"
   )
   lines.push("## 本维度 Issue (open)", "")
   if (openIssues.length === 0) lines.push("- (无)")
   else for (const i of openIssues) lines.push(renderIssueItem(i))
   lines.push("")
   const submittedIssues = tg.issues.filter(
-    (i) => i.dimension === dimension && i.status === "submitted"
+    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "submitted"
   )
   lines.push("## 本维度 Issue (待确认)", "")
   if (submittedIssues.length === 0) lines.push("- (无)")
@@ -1098,7 +1086,7 @@ function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupState, ag
     ""
   )
   const exemptionIssues = tg.issues.filter(
-    (i) => i.dimension === dimension && i.status === "exemption"
+    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "exemption"
   )
   lines.push("## 本维度 Issue (豁免裁定中)", "")
   if (exemptionIssues.length === 0) lines.push("- (无)")
@@ -1946,6 +1934,7 @@ function deduplicateAndAddIssues(
   issues: any[],
   existingIssues: IssueItem[],
   dimension: Dimension,
+  sourcePhase: "tool" | "task" | "quality",
   nextIssueIdStart: number,
 ): { newIssues: IssueItem[]; nextIssueId: number; dedupedCount: number } {
   let nextIssueId = nextIssueIdStart
@@ -1975,7 +1964,7 @@ function deduplicateAndAddIssues(
       rootCauseGuess: null,
       exemptReason: null,
       rejectReason: null,
-      isKnownIssue: false,
+      sourcePhase,
     })
   }
   return { newIssues, nextIssueId, dedupedCount }
@@ -1992,11 +1981,12 @@ function applyReviewGate(
   fixedIds: string[],
   exemptIds: string[],
   rejectedIssueInputs: Array<{ issue_id: string; reason: string }>,
-  dimension?: Dimension
+  dimension?: Dimension,
+  sourcePhase?: string
 ): void {
   const filtered = dimension
-    ? issues.filter((i) => (i.status === "submitted" || i.status === "exemption") && i.dimension === dimension)
-    : issues.filter((i) => i.status === "submitted" || i.status === "exemption")
+    ? issues.filter((i) => (i.status === "submitted" || i.status === "exemption") && i.dimension === dimension && i.sourcePhase === sourcePhase)
+    : issues.filter((i) => (i.status === "submitted" || i.status === "exemption") && i.sourcePhase === sourcePhase)
 
   const fixedSet = new Set(fixedIds)
   const exemptSet = new Set(exemptIds)
@@ -2112,20 +2102,18 @@ export const tool_review_submit = tool({
     }
 
     // 处理 issue 裁定（fixed→verified / exempt→exempted / rejected→rejected），维度不限
-    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [])
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], undefined, "tool")
 
-    // 添加新 issue（去重），标记 isKnownIssue=true 供 quality 层去重
+    // 添加新 issue（去重）
     let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
     const newIssues: IssueItem[] = []
     let dedupedCount = 0
     for (const iss of issues) {
       const dim = iss.dimension as Dimension
-      const dedupResult = deduplicateAndAddIssues([iss], tg.issues, dim, nextIssueId)
+      const dedupResult = deduplicateAndAddIssues([iss], tg.issues, dim, "tool", nextIssueId)
       if (dedupResult.dedupedCount > 0) { dedupedCount++; continue }
-      const newIssue = dedupResult.newIssues[0]
-      if (newIssue) {
-        newIssue.isKnownIssue = true
-        newIssues.push(newIssue)
+      if (dedupResult.newIssues.length > 0) {
+        newIssues.push(dedupResult.newIssues[0])
         nextIssueId = dedupResult.nextIssueId
       }
     }
@@ -2274,7 +2262,7 @@ export const task_review_submit = tool({
     for (const iss of rawIssues) {
       const dedupResult = deduplicateAndAddIssues(
         [iss], tg.issues,
-        "style" as Dimension,
+        "style" as Dimension, "task",
         nextIssueId
       )
       if (dedupResult.dedupedCount > 0) continue
@@ -2289,7 +2277,7 @@ export const task_review_submit = tool({
     assertPassWithIssues(args.passed, args.issues || [], "opx_task_review_submit")
 
     // 统一 issue 裁定门禁（gate 先执行，消解活跃 issue）
-    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [])
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], undefined, "task")
 
     // 合并执行边界（自动基于 issue file 目录扩展 + reviewer 显式声明扩展）
     if (tg.executionBoundary) {
@@ -2421,7 +2409,7 @@ export const quality_review_submit = tool({
     }
 
     // 统一 issue 裁定门禁（本维度）
-    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], dimension)
+    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], dimension, "quality")
 
     // 去重并添加新 issue
     let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
@@ -2429,7 +2417,7 @@ export const quality_review_submit = tool({
     let dedupedCount = 0
     for (const iss of issues) {
       const dedupResult = deduplicateAndAddIssues(
-        [iss], tg.issues, dimension,
+        [iss], tg.issues, dimension, "quality",
         nextIssueId
       )
       if (dedupResult.dedupedCount > 0) { dedupedCount++; continue }

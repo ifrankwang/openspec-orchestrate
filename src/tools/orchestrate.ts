@@ -1216,12 +1216,8 @@ export const init = tool({
             return existingTask || { ...t, status: taskInjectionStatus }
           })
           tgIssues = [...existing.issues]
-          // 保留 review layer 进度
-          phases.review.retryCount = existing.phases.review.retryCount
-          phases.review.quality.baselineDone = existing.phases.review.quality.baselineDone
-          phases.review.tool = existing.phases.review.tool
-          phases.review.task = existing.phases.review.task
-          phases.review.quality = existing.phases.review.quality
+          // 整体保留 review 层进度（深拷贝），避免逐字段列举遗漏
+          phases.review = JSON.parse(JSON.stringify(existing.phases.review))
         } else {
           tgTasks = newTasks.map((t) => ({
             ...t,
@@ -1229,11 +1225,7 @@ export const init = tool({
           }))
           tgIssues = existing?.issues ?? []
           if (existing && args.recovery) {
-            phases.review.retryCount = existing.phases.review.retryCount
-            phases.review.quality.baselineDone = existing.phases.review.quality.baselineDone
-            phases.review.tool = existing.phases.review.tool
-            phases.review.task = existing.phases.review.task
-            phases.review.quality = existing.phases.review.quality
+            phases.review = JSON.parse(JSON.stringify(existing.phases.review))
           }
         }
 
@@ -1245,9 +1237,11 @@ export const init = tool({
           }
           if (rl === "quality") {
             phases.review.task.completed = true
-            phases.review.retryCount = 0
-            phases.review.quality.progress = createEmptyQualityProgress()
-            phases.review.quality.baselineDone = false
+            if (!preserveProgress) {
+              phases.review.retryCount = 0
+              phases.review.quality.progress = createEmptyQualityProgress()
+              phases.review.quality.baselineDone = false
+            }
           }
         }
 

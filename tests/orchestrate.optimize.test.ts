@@ -638,9 +638,9 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 
-  // B3.6 recovery review + review_layer=quality → 重置 retryCount=0 + 清除 progress，门禁放行全部 5 维
-  test("recovery review+review_layer=quality → 重置 retryCount 和 progress，quality reviewer 可过 gate", async () => {
-    const root = `/tmp/optimize-b3f-${Date.now()}`
+  // B3.6a recovery review + review_layer=quality + preserve_progress=true → 保留 quality 进度
+  test("B3.6a preserve_progress=true → 保留 baselineDone/retryCount/progress", async () => {
+    const root = `/tmp/optimize-b3fa-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
     __setGitRunner(fakeGit)
@@ -671,10 +671,11 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
     await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
-    // 模拟 quality 已有历史：retryCount=2，部分维度已提交
+    // 模拟 quality 已有历史：retryCount=2, baselineDone=true, 部分维度已提交
     state = readStateSync(wt, CID)
     const tg1 = state.taskGroups.find((g: any) => g.id === "1")
     tg1.phases.review.retryCount = 2
+    tg1.phases.review.quality.baselineDone = true
     tg1.phases.review.quality.progress.style = { submitted: true, passed: true }
     tg1.phases.review.quality.progress.architecture = { submitted: true, passed: true }
     writeFileSync(
@@ -694,20 +695,94 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
       },
     }, o)
 
-    // 验证 retryCount=0 且 progress 清空
+    // 验证 quality 进度全部保留
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.phases.review.quality.baselineDone).toBe(true)
+    expect(tg2.phases.review.retryCount).toBe(2)
+    expect(tg2.phases.review.quality.progress.style.submitted).toBe(true)
+    expect(tg2.phases.review.quality.progress.architecture.submitted).toBe(true)
+    expect(tg2.phases.review.quality.progress.performance.submitted).toBe(false)
+    expect(tg2.phases.review.tool.completed).toBe(true)
+    expect(tg2.phases.review.task.completed).toBe(true)
+    expect(tg2.phases.review.quality.completed).toBe(false)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  // B3.6b recovery review + review_layer=quality + preserve_progress=false → 清空 quality 进度
+  test("B3.6b preserve_progress=false → 清空 baselineDone/retryCount/progress，门禁放行全部 5 维", async () => {
+    const root = `/tmp/optimize-b3fb-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+    const a = makeCtx("openspec-architect", wt)
+    const d = makeCtx("openspec-developer", wt)
+    const toolR = makeCtx("openspec-reviewer-tool", wt)
+    const taskR = makeCtx("openspec-reviewer-task", wt)
+
+    // 跑完整到 review + tool pass + task pass
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    let state = readStateSync(wt, CID)
+    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+
+    state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+    }, o)
+    await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
+
+    // 模拟 quality 已有历史：retryCount=2, baselineDone=true, 部分维度已提交
+    state = readStateSync(wt, CID)
+    const tg1 = state.taskGroups.find((g: any) => g.id === "1")
+    tg1.phases.review.retryCount = 2
+    tg1.phases.review.quality.baselineDone = true
+    tg1.phases.review.quality.progress.style = { submitted: true, passed: true }
+    tg1.phases.review.quality.progress.architecture = { submitted: true, passed: true }
+    writeFileSync(
+      join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
+      JSON.stringify(state, null, 2)
+    )
+
+    // 恢复时指定 review_layer=quality，preserve_progress=false（清空 quality）
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: {
+        phase: "review",
+        worktree_path: tg1.worktreePath,
+        branch_name: tg1.branchName,
+        preserve_progress: false,
+        review_layer: "quality",
+      },
+    }, o)
+
+    // 验证 quality 进度被清空
+    state = readStateSync(wt, CID)
+    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.phases.review.quality.baselineDone).toBe(false)
     expect(tg2.phases.review.retryCount).toBe(0)
     for (const dim of ["style", "architecture", "performance", "security", "maintainability"]) {
       expect(tg2.phases.review.quality.progress[dim].submitted).toBe(false)
       expect(tg2.phases.review.quality.progress[dim].passed).toBe(false)
     }
 
-    // 验证 taxk/tool 层状态仍正确
+    // 验证 tool/task 层状态仍正确
     expect(tg2.phases.review.tool.completed).toBe(true)
     expect(tg2.phases.review.task.completed).toBe(true)
+    expect(tg2.phases.review.quality.completed).toBe(false)
 
-    // 验证门禁放行全部 5 维 quality reviewer
+    // 验证门禁放行全部 5 维 quality reviewer（baselineDone=false → getRequiredDimensions 返回全部 5 维）
     for (const agent of ["openspec-reviewer-style", "openspec-reviewer-architecture", "openspec-reviewer-performance", "openspec-reviewer-security", "openspec-reviewer-maintainability"]) {
       const ctx = makeCtx(agent, wt)
       const view = await status.execute({}, ctx)
@@ -750,10 +825,17 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     await tool_review_submit.execute({ task_group_id: "1", passed: true, issues: [], fixed_issue_ids: [] }, toolR)
     await task_review_submit.execute({ task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
-    // 恢复时指定 review_layer=quality 且 preserveProgress
+    // 写状态文件设 retryCount=3, lastResolvedRetryCount=3
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    const origToolRetry = tg2.phases.review.retryCount
+    tg2.phases.review.retryCount = 3
+    tg2.phases.review.lastResolvedRetryCount = 3
+    writeFileSync(
+      join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
+      JSON.stringify(state, null, 2)
+    )
+
+    // 恢复时指定 review_layer=quality 且 preserveProgress
     await init.execute({
       change_id: CID, task_group_id: "1",
       recovery: {
@@ -769,8 +851,9 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     const tg3 = state.taskGroups.find((g: any) => g.id === "1")
     expect(tg3.phases.review.tool.completed).toBe(true)
     expect(tg3.phases.review.task.completed).toBe(true)
-    // preserveProgress 应保留 retryCount
-    expect(tg3.phases.review.retryCount).toBe(origToolRetry)
+    // preserveProgress 应保留 retryCount 和 lastResolvedRetryCount
+    expect(tg3.phases.review.retryCount).toBe(3)
+    expect(tg3.phases.review.lastResolvedRetryCount).toBe(3)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

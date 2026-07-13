@@ -402,3 +402,64 @@ describe("S9: checkpoint (3 tool failures)", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ════════════════════════════════════════════════════════════════
+//  场景 10: resolve_review(continue) 后正常推进，opx_status 不误报异常
+// ════════════════════════════════════════════════════════════════
+
+describe("S10: resolve_review(continue) 后正常推进", () => {
+  test("resolve_review(continue) 后 opx_status 不误报异常", async () => {
+    const root = `/tmp/osn10-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+    const a = makeCtx("openspec-architect", wt)
+    const d = makeCtx("openspec-developer", wt)
+    const toolR = makeCtx("openspec-reviewer-tool", wt)
+
+    // 1. init → arch → set_worktree → dev_submit
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({
+      task_group_id: "1", passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
+    }, a)
+    await set_worktree.execute({}, o)
+    let state = readStateSync(wt, CID)
+    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+
+    // 2. 3 轮 tool 失败（达到检查点，retryCount=3）
+    for (let round = 1; round <= 3; round++) {
+      state = readStateSync(wt, CID)
+      const tg = state.taskGroups.find((g: any) => g.id === "1")
+      if (round > 1) {
+        await init.execute({
+          change_id: CID, task_group_id: "1",
+          recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true },
+        }, o)
+        fakeGit.diffs.set(devWt, [`src/FR${round - 1}.java`])
+        await dev_submit.execute({ task_group_id: "1" }, d)
+      }
+      await tool_review_submit.execute({
+        task_group_id: "1", passed: false, issues: [], fixed_issue_ids: [],
+      }, toolR)
+    }
+
+    // 3. resolve_review(continue) → lastResolvedRetryCount=3, status=dev_impl
+    await resolve_review.execute({ task_group_id: "1", decision: "continue" }, o)
+
+    // 4. dev_submit → status=review, retryCount=3, lastResolvedRetryCount=3
+    fakeGit.diffs.set(devWt, ["src/FR3.java"])
+    await dev_submit.execute({ task_group_id: "1" }, d)
+
+    // 5. opx_status 不应含 "以上状态异常" 和 "recovery"
+    const output = await status.execute({}, o)
+    expect(output).not.toContain("以上状态异常")
+    expect(output).not.toContain("recovery")
+    expect(output).toContain("openspec-reviewer-tool")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})

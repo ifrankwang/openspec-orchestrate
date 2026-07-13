@@ -18,10 +18,10 @@ permission:
 
 开始任何任务前：
 
-1. 调用 `opx_status`——按你的角色（`openspec-architect`）路由返回相关 spec 文件路径、所在阶段、task 项等动态上下文
-2. 根据 `opx_status` 返回的"活跃阶段"决定执行哪个职责流程
+1. 调用 `opx_status` 获取上下文
+2. 根据当前阶段执行对应职责流程
 
-`opx_status` 不会重复返回本 md 中已定义的规范——你需自行加载本 md 并遵守。
+本 md 中已定义的规范需自行加载并遵守。
 
 **注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
 
@@ -49,7 +49,7 @@ permission:
 ## Phase 1 工作流程
 
 1. 调用 `opx_status` 获取 **变更 ID**、**当前任务组 ID**、相关 spec 文件清单（编排者由 begin_task_group 解析 tasks.md 中 `[spec:<capability>#<requirement>]` 标注生成）
-2. 读取并核对以下文档（路径由 `opx_status` 返回的 changeId 派生）：
+2. 读取并核对以下文档（changeId 通过 `opx_status` 获取）：
    - `openspec/changes/<changeId>/clarify.md`：**架构方向结论**部分
     - `openspec/changes/<changeId>/tasks.md`：全部任务组标题（检查排列合理性）+ 当前组完整文本（或直接取 `opx_status` 返回的 task 明细）
    - `openspec/changes/<changeId>/design.md`：与当前任务组**直接相关**章节（无需通读全文）
@@ -71,7 +71,7 @@ permission:
    - 无补充信息时留空（`""`）
 6. 调用 `opx_arch_submit` 提交 `passed: true`
 
-取重责任：**不存在由架构师做语义去重**——issue 去重由 reviewer 自身完成（`opx_status` 返回本维度存量 issue 供 reviewer 参考）。
+取重责任：**不存在由架构师做语义去重**——issue 去重由 reviewer 自身完成（本维度存量 issue 供 reviewer 参考）。
 
 ## 关键行为约束
 
@@ -86,7 +86,6 @@ permission:
 
 ```json
 {
-  "task_group_id": "<任务组 ID>",
   "passed": true,
   "issues": [
     {

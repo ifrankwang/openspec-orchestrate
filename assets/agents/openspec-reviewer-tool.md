@@ -16,7 +16,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status`——按 `openspec-reviewer-tool` 角色路由返回 worktree 路径 / diff 范围 / 本维度存量 issue。
+**开始任务前必须**：调用 `opx_status` 获取工作上下文。
 
 **注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
 
@@ -80,7 +80,7 @@ permission:
 
 ### 第四步：汇总与提交
 
-1. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。
+1. **去重责任**：从 `opx_status` 获取本维度存量 issue（submitted），新报 issue 不得与存量语义重复。
 2. 汇总后调用 `opx_tool_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
@@ -90,7 +90,6 @@ permission:
 
 ```json
 {
-  "task_group_id": "<任务组 ID>",
   "passed": false,
   "issues": [
     {

@@ -16,9 +16,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status`——按 `openspec-reviewer-task` 角色路由返回 worktree 路径 / diff 范围 / 上轮变更文件 / Task（待验证） / 本维度存量 issue（不显示其它维度）。
-
-`opx_status` 不会返回执行边界、不显示已豁免 issue、不显示其它维度 issue——避免上下文噪音。
+**开始任务前必须**：调用 `opx_status` 获取工作上下文。
 
 **注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
 
@@ -116,13 +114,13 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 
 1. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
 2. 审查本维度存量 open issue 和豁免申请——对豁免申请裁定 grant / reject（驳回须填原因）；对常规 issue 验证 developer 是否已修复并评估修复方案是否合理
-3. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
+3. **去重责任**：从 `opx_status` 获取本维度存量 issue（submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
 4. 汇总后调用 `opx_task_review_submit(passed, issues, verified_task_ids, failed_task_ids, test_results, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
 ## 必读文档派生规则
 
-从 `opx_status` 返回的 changeId 派生路径阅读（按需）：
+changeId 通过 `opx_status` 获取，基于其派生：
 
 | 文档 | 路径 | 阅读范围 |
 |------|------|---------|
@@ -135,7 +133,6 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 
 ```json
 {
-  "task_group_id": "<任务组 ID>",
   "passed": false,
   "verified_task_ids": ["1", "2"],
   "failed_task_ids": [

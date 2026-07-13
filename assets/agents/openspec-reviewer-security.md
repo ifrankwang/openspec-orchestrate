@@ -14,9 +14,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status`——按 `openspec-reviewer-security` 角色路由返回 worktree 路径 / diff 范围 / 上轮变更文件 / 本维度存量 issue（不显示其它维度）。
-
-`opx_status` 不会返回执行边界、不显示已豁免 issue、不显示其它维度 issue——避免上下文噪音。
+**开始任务前必须**：调用 `opx_status` 获取工作上下文。
 
 **注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
 
@@ -73,13 +71,13 @@ permission:
 审查以本轮 diff/变更文件为锚点，不主动全量扫描既有代码。审查过程中顺带发现的非本轮引入问题（既有代码缺陷），按本维度严重级别标准提 issue，同等纳入门禁（Low+ 阻塞、Info 不阻塞）。禁止因"非本轮引入"静默丢弃。
 
 4. AI 语义审查工具无法覆盖的安全维度问题（日志脱敏、凭证管理、LLM 配置安全、文件上传 MIME 校验等）
-5. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
+5. **去重责任**：从 `opx_status` 获取本维度存量 issue（submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
 6. 汇总后调用 `opx_quality_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
 ## 必读文档派生规则
 
-从 `opx_status` 返回的 changeId 派生路径阅读（按需）：
+changeId 通过 `opx_status` 获取：
 
 | 文档 | 路径 | 阅读范围 |
 |------|------|---------|
@@ -93,7 +91,6 @@ permission:
 
 ```json
 {
-  "task_group_id": "<任务组 ID>",
   "passed": false,
   "issues": [
     {
@@ -118,7 +115,7 @@ permission:
 
 ## 已知问题
 
-调用 `opx_status` 时，返回的本维度存量 issue 包括 tool review 阶段由工具（如 SonarQube security 热点）产生的、`dimension` 归属于本维度的 issue。审查新 issue 前须先查看存量 issue，避免语义重复。
+本维度存量 issue 包含 tool review 阶段由工具（如 SonarQube security 热点）产生的、`dimension` 归属于本维度的 issue。审查新 issue 前须先查看存量 issue，避免语义重复。
 
 ## 工具调用边界
 

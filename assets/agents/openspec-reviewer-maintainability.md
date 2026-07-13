@@ -14,9 +14,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status`——按 `openspec-reviewer-maintainability` 角色路由返回 worktree 路径 / diff 范围 / 上轮变更文件 / 本维度存量 issue（不显示其它维度）。
-
-`opx_status` 不会返回执行边界、不显示已豁免 issue、不显示其它维度 issue——避免上下文噪音。
+**开始任务前必须**：调用 `opx_status` 获取工作上下文。
 
 **注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
 
@@ -77,13 +75,13 @@ permission:
 
 4. AI 语义审查工具无法覆盖的可维护性维度问题（异常处理粒度、方法单一职责、资源管理等）
 5. **技术债增量审查**：对照 diff 与既有代码，识别本次变更是否新引入技术债，或既有技术债是否被本次变更扩大化（加长已超标方法、复制坏模式、扩散重复配置、加剧未收敛架构违规等）。按审查内容中的技术债增量标准定级与提 issue，并遵守扩大化提级规则。顺带发现的既有技术债（非本次变更扩大化）按判例表基准级别照报，不因非本轮引入丢弃
-6. **去重责任**：对照 `opx_status` 返回的本维度存量 issue（open/submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
+6. **去重责任**：从 `opx_status` 获取本维度存量 issue（submitted），新报 issue 不得与存量语义重复。已修复的存量 issue 通过 `fixed_issue_ids` 参数标注
 7. 汇总后调用 `opx_quality_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
 ## 必读文档派生规则
 
-从 `opx_status` 返回的 changeId 派生路径阅读（按需）：
+changeId 通过 `opx_status` 获取：
 
 | 文档 | 路径 | 阅读范围 |
 |------|------|---------|
@@ -96,7 +94,6 @@ permission:
 
 ```json
 {
-  "task_group_id": "<任务组 ID>",
   "passed": false,
   "issues": [
     {
@@ -121,7 +118,7 @@ permission:
 
 ## 已知问题
 
-调用 `opx_status` 时，返回的本维度存量 issue 包括 tool review 阶段由工具（如 PMD errorprone/bestpractices、SonarQube code smell、UT 编译失败）产生的、`dimension` 归属于本维度的 issue。审查新 issue 前须先查看存量 issue，避免语义重复。
+本维度存量 issue 包含 tool review 阶段由工具（如 PMD errorprone/bestpractices、SonarQube code smell、UT 编译失败）产生的、`dimension` 归属于本维度的 issue。审查新 issue 前须先查看存量 issue，避免语义重复。
 
 ## 工具调用边界
 

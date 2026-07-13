@@ -1369,7 +1369,7 @@ export const init = tool({
 
 export const set_worktree = tool({
   description:
-    "确保目标组的 git worktree 就绪。若已存在则复用，否则按规范自动创建（分支 task-group/{id}，路径 .worktree/task-group-{id}）。架构师复核通过后调用。进入开发阶段时自动按最终 tasks.md 刷新当前组任务列表；恢复场景仅补齐 worktree、不改阶段。",
+    "确保目标组的 git worktree 就绪。若已存在则复用，否则按规范自动创建（分支 task-group/{id}，路径 .worktree/task-group-{id}）。进入开发阶段时自动按最终 tasks.md 刷新当前组任务列表；恢复场景仅补齐 worktree、不改阶段。",
   args: {
     worktree_path: tool.schema.string().optional().describe("git worktree 的绝对路径（可选，不传则按规范自动生成）"),
     branch_name: tool.schema.string().optional().describe("worktree 对应的分支名（可选，不传则按规范 task-group/{id}）"),
@@ -1557,7 +1557,7 @@ export const status = tool({
       const instructionBlock = [
         "# ✅ 当前轮到你执行",
         "",
-        `完成本职工作后**必须**调用 \`${submitTool}(task_group_id="${tg.id}")\` 提交。`,
+         `完成本职工作后**必须**调用 \`${submitTool}()\` 提交。`,
         "即使无 issue / 无待处理项，也必须提交 passed=true。",
         "",
         "---",
@@ -1654,9 +1654,8 @@ export const complete_task_group = tool({
 
 export const arch_submit = tool({
   description:
-    "架构师 Phase 1 提交复核报告。passed=false 时 architect_review 保持 in_progress（编排者需向用户展示问题清单并询问处理方式，用户答复后重新分派 architect 补全文档并提交 passed=true，随后调用 opx_orch_init 同步 state）；passed=true 时 execution_boundary 必须提供。",
+    "架构师提交复核报告。passed=false 时复核不通过；passed=true 时 execution_boundary 必须提供。",
   args: {
-    task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
     passed: tool.schema.boolean().describe("复核是否通过"),
     issues: tool.schema.array(architectIssue).describe("问题清单（通过时为空数组）"),
     execution_boundary: executionBoundarySchema.optional().describe("developer 执行边界（passed=true 时必须提供）"),
@@ -1665,10 +1664,7 @@ export const arch_submit = tool({
     assertAgent(context, "opx_arch_submit", ["openspec-architect"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.taskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
-    }
-    const tg = findTaskGroup(state, args.task_group_id)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (tg.status !== "task_analysis") {
       throw new Error(`阶段顺序错误：task_analysis 当前不在活跃阶段，当前阶段为 "${tg.status}"。`)
     }
@@ -1691,7 +1687,7 @@ export const arch_submit = tool({
           throw new Error(`git add openspec docs 失败：${addResult.stderr}`)
         }
         const commitResult = await runGitChecked(context.worktree, [
-          "commit", "-m", `docs(openspec): refine specs for task-group ${args.task_group_id}`,
+          "commit", "-m", `docs(openspec): refine specs for task-group ${state.taskGroupId}`,
         ])
         if (!commitResult.success) {
           throw new Error(`git commit openspec docs 失败：${commitResult.stderr}`)
@@ -1741,11 +1737,8 @@ const rejectedIssueItem = tool.schema.object({
 
 export const dev_submit = tool({
   description:
-    "developer 提交实现结果。根据 status 区分 task 提交还是 issue 修复：\n" +
-    "- dev_impl 阶段：标记 task 为 submitted，自动进入 review 阶段\n" +
-    "- review 阶段：标记 issue 为 submitted（已修复）或 exemption（申请豁免）",
+    "developer 提交实现结果。标记 task 为 submitted，或标记 issue 为 submitted（已修复）/ exemption（申请豁免）。",
   args: {
-    task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("确认修复的 issue ID 列表"),
     request_exempts: tool.schema.array(requestExemptItem).optional().describe("不可修的 issue 申请豁免"),
   },
@@ -1753,10 +1746,7 @@ export const dev_submit = tool({
     assertAgent(context, "opx_dev_submit", ["openspec-developer"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.taskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
-    }
-    const tg = findTaskGroup(state, args.task_group_id)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (tg.status !== "dev_impl" && tg.status !== "review") {
       throw new Error(`dev_submit 仅在 dev_impl 或 review 阶段可用，当前阶段为 "${tg.status}"。`)
     }
@@ -1801,7 +1791,7 @@ export const dev_submit = tool({
     const requestedIds: string[] = []
     for (const r of args.request_exempts || []) {
       const issue = tg.issues.find((i) => i.id === r.issue_id)
-      if (!issue) throw new Error(`issue #${r.issue_id} 不在任务组 ${args.task_group_id} 的 issue 清单中。`)
+      if (!issue) throw new Error(`issue #${r.issue_id} 不在任务组 ${state.taskGroupId} 的 issue 清单中。`)
       if (issue.status === "exempted") {
         throw new Error(`issue #${r.issue_id} 已被豁免，无需重复申请。`)
       }
@@ -2040,7 +2030,6 @@ export const tool_review_submit = tool({
   description:
     "工具审核层提交。跨维提交 tool issues（issues 自带 dimension 字段），含 UT 结果。调用者必须为 openspec-reviewer-tool。",
   args: {
-    task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
     passed: tool.schema.boolean().describe("工具层是否通过"),
     issues: tool.schema.array(toolIssueItem).optional().describe("跨维 issue，每个 item 需带 dimension"),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
@@ -2053,10 +2042,7 @@ export const tool_review_submit = tool({
     assertAgent(context, "opx_tool_review_submit", ["openspec-reviewer-tool"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.taskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
-    }
-    const tg = findTaskGroup(state, args.task_group_id)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (tg.status !== "review") {
       throw new Error(`tool_review_submit 需在 review 阶段调用，当前阶段为 "${tg.status}"。`)
     }
@@ -2165,7 +2151,6 @@ export const task_review_submit = tool({
   description:
     "任务审核层提交。验证 task 产出、服务启动、接口可用性、测试代码审查。调用者必须为 openspec-reviewer-task。",
   args: {
-    task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
     passed: tool.schema.boolean().describe("任务层是否通过"),
     verified_task_ids: tool.schema.array(tool.schema.string()).optional().describe("已验证完成的 task ID 列表"),
     failed_task_ids: tool.schema.array(taskVerifyResult).optional().describe("未完成的 task 列表（含原因）"),
@@ -2179,10 +2164,7 @@ export const task_review_submit = tool({
     assertAgent(context, "opx_task_review_submit", ["openspec-reviewer-task"])
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.taskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
-    }
-    const tg = findTaskGroup(state, args.task_group_id)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (tg.status !== "review") {
       throw new Error(`task_review_submit 需在 review 阶段调用，当前阶段为 "${tg.status}"。`)
     }
@@ -2334,7 +2316,6 @@ export const quality_review_submit = tool({
   description:
     "AI 语义审查层提交。维度由调用者身份自动识别。调用者必须为 openspec-reviewer-{style|architecture|performance|security|maintainability}。",
   args: {
-    task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
     passed: tool.schema.boolean().describe("本维度是否通过"),
     issues: tool.schema.array(reviewIssue).optional().describe("新报审查 issue"),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("已修复的既有 issue ID 列表"),
@@ -2360,10 +2341,7 @@ export const quality_review_submit = tool({
     }
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.taskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
-    }
-    const tg = findTaskGroup(state, args.task_group_id)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (tg.status !== "review") {
       throw new Error(`quality_review_submit 需在 review 阶段调用，当前阶段为 "${tg.status}"。`)
     }
@@ -2525,11 +2503,8 @@ async function finalizeQualityPhase(
 
 export const resolve_review = tool({
   description:
-    "编排者在 review 阶段重试超上限（needs_user_decision）后，据用户决策推进：\n" +
-    "- decision=continue：重置审查进度，切换到 dev_impl 阶段，developer 重新提交后回到 tool→task→quality 全流程基线\n" +
-    "- decision=giveup：将剩余 Low+ open/rejected 及待裁定 exemption 置 exempted，标记 review 完成",
+    "编排者在 review 阶段重试超上限（needs_user_decision）后，根据用户决策推进。decision=continue：重置审查进度后继续修复；decision=giveup：将剩余待审 issue 置为 exempted 后完成。",
   args: {
-    task_group_id: tool.schema.string().min(1).describe("任务组 ID"),
     decision: tool.schema
       .enum(["continue", "giveup"])
       .describe("continue=继续修复；giveup=放弃"),
@@ -2538,10 +2513,7 @@ export const resolve_review = tool({
     assertOrchestrator(context, "opx_orch_resolve_review")
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    if (state.taskGroupId !== args.task_group_id) {
-      throw new Error(`任务组 ID 不匹配：编排目标为 "${state.taskGroupId}"，收到的是 "${args.task_group_id}"。`)
-    }
-    const tg = findTaskGroup(state, args.task_group_id)
+    const tg = findTaskGroup(state, state.taskGroupId)
     if (tg.status !== "review") {
       throw new Error(`opx_orch_resolve_review 仅在 review 阶段可用，当前阶段为 "${tg.status}"。`)
     }

@@ -14,16 +14,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任何任务前必须**：调用 `opx_status` 获取你的开发上下文——按 `openspec-developer` 角色路由返回：
-
-- worktree 路径 / 分支 / diff 范围
-- 执行边界（允许目录 / 允许包 / 备注）
-- 相关 spec 文件清单
-- 当前阶段
-- Task（待完成 / 待验证 / 已驳回）
-- Issue（待修复 / 已修复待验证 / 豁免裁定中）
-
-`opx_status` 不会返回审核进度等与你无关的信息。
+**开始任何任务前必须**：调用 `opx_status` 获取你的开发上下文。
 
 工作环境（worktree 路径、执行边界等）由 `opx_status` 提供，你**不需要**在 worktree 中创建任何新 worktree——编排者已通过 `opx_orch_set_worktree` 设置，直接复用。
 
@@ -40,7 +31,7 @@ permission:
 
 ## 必读文档派生规则
 
-从 `opx_status` 返回的 changeId 派生以下路径并按需阅读：
+changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 
 | 文档 | 路径 | 阅读范围 |
 |------|------|---------|
@@ -99,7 +90,7 @@ permission:
 ## 任务迭代规范
 
 1. **逐条推进**：按 task 项的顺序逐个实现
-2. **最小改动**：每次改动聚焦当前子任务，不超出 `opx_status` 返回的执行边界
+2. **最小改动**：每次改动聚焦当前子任务，不超出执行边界（通过 `opx_status` 获取）
 3. **暂停条件**：
    - 子任务需求模糊不清 → 暂停
    - 实现过程中发现 design 问题 → 暂停
@@ -128,7 +119,6 @@ permission:
 
 ```json
 {
-  "task_group_id": "<任务组 ID>",
   "fixed_issue_ids": ["15", "22"],
   "request_exempts": [
     { "issue_id": "18", "reason": "本任务组范围内为已知技术债，需引入反向索引架构" }

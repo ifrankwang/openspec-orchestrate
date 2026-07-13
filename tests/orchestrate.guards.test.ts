@@ -23,6 +23,23 @@ import { FakeGitRunner, makeCtx } from "./helpers"
 const CID = "test-guard"
 afterAll(() => { __setGitRunner(null) })
 
+const FORBIDDEN_ORCHESTRATION = [
+  "从 tool 层", "从 task 层", "从 quality 层",
+  "请分派", "请调用",
+  "进入 review", "进入 quality", "进入 task", "进入 dev",
+  "重新开始",
+  "下一步：",
+]
+
+function expectNoOrchestration(msg: string | undefined) {
+  expect(msg).toBeDefined()
+  expect(typeof msg).toBe("string")
+  for (const p of FORBIDDEN_ORCHESTRATION) {
+    expect(msg!).not.toContain(p)
+  }
+  expect(msg).toContain("职责已完成，请立即结束当前会话")
+}
+
 function setupWt(root: string, wt: string): string {
   mkdirSync(join(wt, "openspec", "changes", CID), { recursive: true })
   writeFileSync(
@@ -735,6 +752,7 @@ describe("G16. 层失败回退 dev_impl", () => {
     const r = typeof toolOut === "string" ? toolOut : toolOut.output
     const parsed = JSON.parse(r)
     expect(parsed.status).toBe("recorded")
+    expectNoOrchestration(parsed.message)
 
     const state2 = readStateSync(wt, CID)
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")
@@ -785,6 +803,7 @@ describe("G16. 层失败回退 dev_impl", () => {
     const jsonStr = typeof toolOut === "string" ? toolOut : toolOut.output
     const parsed = JSON.parse(jsonStr)
     expect(parsed.status).toBe("recorded")
+    expectNoOrchestration(parsed.message)
 
     const state2 = readStateSync(wt, CID)
     const tg2 = state2.taskGroups.find((g: any) => g.id === "1")

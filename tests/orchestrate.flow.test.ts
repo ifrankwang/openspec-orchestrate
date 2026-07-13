@@ -37,6 +37,23 @@ function readStateSync(wt: string, cid: string): any {
   return JSON.parse(readFileSync(p, "utf-8"))
 }
 
+const FORBIDDEN_ORCHESTRATION = [
+  "从 tool 层", "从 task 层", "从 quality 层",
+  "请分派", "请调用",
+  "进入 review", "进入 quality", "进入 task", "进入 dev",
+  "重新开始",
+  "下一步：",
+]
+
+function expectNoOrchestration(msg: string | undefined) {
+  expect(msg).toBeDefined()
+  expect(typeof msg).toBe("string")
+  for (const p of FORBIDDEN_ORCHESTRATION) {
+    expect(msg!).not.toContain(p)
+  }
+  expect(msg).toContain("职责已完成，请立即结束当前会话")
+}
+
 function freshWt(root: string): string {
   const id = `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
   const wt = join(root, id, "w")
@@ -146,6 +163,7 @@ describe("1. Happy Path — 完整流程", () => {
     }, a))
     expect(r1.status).toBe("ok")
     expect(r1.phase).toBe("architect_review=completed")
+    expectNoOrchestration(r1.message)
 
     state = readStateSync(wt, CID)
     const tg1 = state.taskGroups.find((g: any) => g.id === "1")
@@ -168,6 +186,7 @@ describe("1. Happy Path — 完整流程", () => {
     const r3 = JSON.parse(await dev_submit.execute({ task_group_id: "1" }, d))
     expect(r3.status).toBe("ok")
     expect(r3.active_phase).toBe("review")
+    expectNoOrchestration(r3.message)
 
     state = readStateSync(wt, CID)
     const tg3 = state.taskGroups.find((g: any) => g.id === "1")
@@ -183,6 +202,7 @@ describe("1. Happy Path — 完整流程", () => {
     }, toolR))
     expect(rr1.status).toBe("ok")
     expect(rr1.phase).toBe("review(tool=completed)")
+    expectNoOrchestration(rr1.message)
 
     const rr2 = JSON.parse(await task_review_submit.execute({
       task_group_id: "1", passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [],
@@ -190,6 +210,7 @@ describe("1. Happy Path — 完整流程", () => {
     }, taskR))
     expect(rr2.status).toBe("ok")
     expect(rr2.phase).toBe("review(task=completed)")
+    expectNoOrchestration(rr2.message)
 
     state = readStateSync(wt, CID)
     const tg6 = state.taskGroups.find((g: any) => g.id === "1")
@@ -203,10 +224,13 @@ describe("1. Happy Path — 完整流程", () => {
       const result = JSON.parse(await quality_review_submit.execute({
         task_group_id: "1", passed: true, issues: [],
       }, makeCtx(agent, wt)))
-      if (i < dims.length - 1) expect(result.status).toBe("partial")
-      else {
+      if (i < dims.length - 1) {
+        expect(result.status).toBe("partial")
+        expectNoOrchestration(result.message)
+      } else {
         expect(result.status).toBe("ok")
         expect(result.phase).toBe("review=completed")
+        expectNoOrchestration(result.message)
       }
     }
 
@@ -862,6 +886,7 @@ describe("11. 守卫 — quality 阶段阻塞 issue", () => {
       lastResult = res
     }
     expect(lastResult.status).toBe("recorded")
+    expectNoOrchestration(lastResult.message)
     expect(lastResult.failed_dimensions).toBeDefined()
     expect(lastResult.has_residual_blocking).toBe(true)
 
@@ -928,6 +953,7 @@ describe("12. resolve_review — continue / giveup", () => {
           task_group_id: "1", passed: false, issues: [], fixed_issue_ids: [],
         }, toolR))
 
+        expectNoOrchestration(r.message)
         if (round < 3) {
           expect(r.status).toBe("recorded")
           expect(r.retry_count).toBe(round)
@@ -996,6 +1022,7 @@ describe("12. resolve_review — continue / giveup", () => {
         lastRes = JSON.parse(await quality_review_submit.execute(args, makeCtx(`openspec-reviewer-${dims[i]}`, wt)))
       }
       expect(lastRes.status).toBe("recorded")
+      expectNoOrchestration(lastRes.message)
       expect(lastRes.retry_count).toBe(1)
 
       // Rounds 2-3：recovery → quality submit（仅 style 维度）。
@@ -1014,6 +1041,7 @@ describe("12. resolve_review — continue / giveup", () => {
           fixed_issue_ids: [],
         }, makeCtx("openspec-reviewer-style", wt)))
 
+        expectNoOrchestration(lastRes.message)
         if (round < 3) {
           expect(lastRes.status).toBe("recorded")
           expect(lastRes.retry_count).toBe(round)

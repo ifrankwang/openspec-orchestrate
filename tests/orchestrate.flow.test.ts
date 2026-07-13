@@ -216,7 +216,11 @@ describe("1. Happy Path — 完整流程", () => {
 
     state = readStateSync(wt, CID)
     const tg7 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg7.phases.review.completed).toBe(true)
+    expect(tg7.phases.review.tool.completed).toBe(true)
+    expect(tg7.phases.review.task.completed).toBe(true)
+    for (const d of ["style", "architecture", "performance", "security", "maintainability"]) {
+      expect(tg7.phases.review.quality.progress[d]).toBe("passed")
+    }
 
     // 7. complete_task_group
     const r5 = JSON.parse(await complete_task_group.execute({}, o))
@@ -292,7 +296,11 @@ describe("2. 完整流程（无驳回）", () => {
 
     state = readStateSync(wt, CID)
     const tgQ = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tgQ.phases.review.completed).toBe(true)
+    expect(tgQ.phases.review.tool.completed).toBe(true)
+    expect(tgQ.phases.review.task.completed).toBe(true)
+    for (const d of ["style", "architecture", "performance", "security", "maintainability"]) {
+      expect(tgQ.phases.review.quality.progress[d]).toBe("passed")
+    }
 
     await complete_task_group.execute({}, o)
     state = readStateSync(wt, CID)
@@ -890,7 +898,6 @@ describe("12. resolve_review — continue / giveup", () => {
       expect(tgS.phases.review.retryCount).toBe(3)
       expect(tgS.phases.review.tool.completed).toBe(false)
       expect(tgS.phases.review.task.completed).toBe(false)
-      expect(tgS.phases.review.completed).toBe(false)
       expect(tgS.status).toBe("dev_impl")
 
       // 验证 developer opx_status 通过门禁
@@ -979,7 +986,10 @@ describe("12. resolve_review — continue / giveup", () => {
 
       state = readStateSync(wt, CID)
       const tgG = state.taskGroups.find((g: any) => g.id === "1")
-      expect(tgG.phases.review.completed).toBe(true)
+      // giveup 标记所有子层完成，确保 isReviewCompleted 放行
+      expect(tgG.phases.review.tool.completed).toBe(true)
+      expect(tgG.phases.review.task.completed).toBe(true)
+      expect(tgG.phases.review.quality.progress.style).toBe("passed")
       // giveup 将所有 open/rejected/submitted/exemption_requested 的 blocking issue 置为 exempted
       for (const issue of tgG.issues) {
         expect(["exempted", "verified"]).toContain(issue.status)

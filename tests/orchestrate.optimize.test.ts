@@ -1047,7 +1047,11 @@ describe("B9. retryCount>0 但 baseline 未建 → 全维门禁", () => {
 
     state = readStateSync(wt, CID)
     const tgAfter = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tgAfter.phases.review.completed).toBe(true)
+    expect(tgAfter.phases.review.tool.completed).toBe(true)
+    expect(tgAfter.phases.review.task.completed).toBe(true)
+    for (const d of ["style", "architecture", "performance", "security", "maintainability"]) {
+      expect(tgAfter.phases.review.quality.progress[d]).toBe("passed")
+    }
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

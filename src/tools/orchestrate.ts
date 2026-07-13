@@ -145,7 +145,6 @@ interface ReviewLayerData {
 }
 
 interface ReviewPhaseData {
-  completed: boolean
   retryCount: number
   lastResolvedRetryCount: number
   tool: ReviewLayerData
@@ -193,7 +192,6 @@ function createEmptyPhases(): Phases {
   return {
     architect_review: { completed: false },
     review: {
-      completed: false,
       retryCount: 0,
       lastResolvedRetryCount: 0,
       tool: { completed: false },
@@ -236,7 +234,7 @@ function phasesAllEmpty(tg: TaskGroupState): boolean {
   return !tg.phases.architect_review.completed
     && tg.status === "task_analysis"
     && tg.tasks.every((t) => t.status === "open")
-    && !tg.phases.review.completed
+    && !isReviewCompleted(tg)
     && tg.issues.length === 0
     && !hasReviewActivity
 }
@@ -266,6 +264,14 @@ function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
     if (i.status === "submitted" || i.status === "exemption_requested") dims.add(i.dimension)
   }
   return dims
+}
+
+/** review 是否已完成全部子层审查：tool/task 都完成 + quality 全维 passed + 无阻塞 issue */
+function isReviewCompleted(tg: TaskGroupState): boolean {
+  return tg.phases.review.tool.completed
+    && tg.phases.review.task.completed
+    && REVIEW_DIMENSIONS.every(d => tg.phases.review.quality.progress[d] === "passed")
+    && !hasBlockingIssues(tg.issues)
 }
 
 // 派生本轮需审查的维度集：non-passed 维度加上有 pending action 的维度
@@ -676,7 +682,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
   else if (!tg.phases.review.task.completed) reviewParts.push("task⏳")
   else if (!allQualityPassed) reviewParts.push("quality⏳")
   const reviewLayer = reviewParts.join(" → ")
-  const reviewStatus = tg.phases.review.completed ? "✓" : (tg.status === "review" ? `● ${reviewLayer}` : "✗")
+  const reviewStatus = isReviewCompleted(tg) ? "✓" : (tg.status === "review" ? `● ${reviewLayer}` : "✗")
   lines.push(`| review | ${reviewStatus} |`)
   lines.push("")
   lines.push("## Task 摘要", "")
@@ -739,8 +745,8 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
     checks.push(`- ⚠️ 阶段逆序：status=${tg.status} 但 architect_review 未完成`)
     checks.push(`  建议：\`opx_orch_init({ recovery: { phase: "task_analysis", ... } })\``)
   }
-  if (tg.phases.review.completed && tg.status !== "review" && tg.status !== "completed") {
-    checks.push(`- ⚠️ 阶段逆序：status=${tg.status} 但 review.completed=true`)
+  if (isReviewCompleted(tg) && tg.status !== "review" && tg.status !== "completed") {
+    checks.push(`- ⚠️ 阶段逆序：status=${tg.status} 但 review 已完成`)
     checks.push(`  建议：\`opx_orch_init({ recovery: { phase: "review", ... } })\``)
   }
   // 规则 2：缺 worktree
@@ -787,7 +793,7 @@ function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, dis
     lines.push("以上状态异常，请按 recovery 建议修复。")
   } else if (tg.status === "completed") {
     lines.push("编排已完成。")
-  } else if (tg.phases.review.completed) {
+  } else if (isReviewCompleted(tg)) {
     lines.push("所有审核层已完成，调用 `opx_orch_complete_task_group` 收尾。")
   } else if (tg.status === "review") {
     const needsDecision = tg.phases.review.retryCount > 0
@@ -1166,7 +1172,7 @@ export const init = tool({
           if (p === "dev_impl") {
             // dev_impl completed is derived from status
           } else if (p === "review") {
-            phases.review.completed = true
+            // review 各子层已通过 createEmptyPhases 设为默认值
           } else {
             phases.architect_review = { completed: true }
           }
@@ -1527,15 +1533,6 @@ export const status = tool({
       }
     }
 
-    // 兜底：所有维度已通过且无待分派 agent — 自动收尾
-    if (
-      tg.status === "review" &&
-      deriveCurrentAgents(tg).length === 0
-    ) {
-      tg.phases.review.completed = true
-      await writeState(context.worktree, state)
-    }
-
     let view: string
     if (agent === ORCHESTRATOR_AGENT) {
       const diskWts = await discoverDiskWorktrees(context.worktree)
@@ -1586,9 +1583,9 @@ export const complete_task_group = tool({
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
     const tg = findTaskGroup(state, state.taskGroupId)
-    if (!tg.phases.review.completed || tg.status === "completed") {
+    if (!isReviewCompleted(tg) || tg.status === "completed") {
       throw new Error(
-        `阶段顺序错误：opx_orch_complete_task_group 需在 review 完成后调用，当前 review.completed=${tg.phases.review.completed}，tg.status=${tg.status}。`
+        `阶段顺序错误：opx_orch_complete_task_group 需在 review 完成后调用，当前 isReviewCompleted=${isReviewCompleted(tg)}，tg.status=${tg.status}。`
       )
     }
     if (tg.worktreePath) {
@@ -1824,7 +1821,6 @@ export const dev_submit = tool({
     // 选项 Y 决策
     if (touchedAnyIssue) {
       // 重置 review 三层
-      tg.phases.review.completed = false
       tg.phases.review.tool.completed = false
       tg.phases.review.task.completed = false
       for (const d of REVIEW_DIMENSIONS) {
@@ -1837,11 +1833,6 @@ export const dev_submit = tool({
     } else {
       tg.status = "review"
       requiredDims = computeRequiredDims(tg)
-    }
-
-    // 自动跳过：无待审维度
-    if (requiredDims.length === 0) {
-      tg.phases.review.completed = true
     }
 
     // 跳过判定：修复轮无待验证 task 时跳过 task review
@@ -2054,7 +2045,7 @@ export const tool_review_submit = tool({
     if (tg.phases.review.tool.completed) {
       throw new Error("tool 层审核报告已提交，不允许重复提交。")
     }
-    if ((tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) || tg.phases.review.completed) {
+    if ((tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) || isReviewCompleted(tg)) {
       throw new Error("后续层审核报告已提交，tool 层不可再提交。")
     }
     assertPassWithIssues(args.passed, args.issues || [], "opx_tool_review_submit")
@@ -2462,7 +2453,6 @@ async function finalizeQualityPhase(
   )
 
   if (failedDims.length === 0 && !hasResidualBlocking) {
-    tg.phases.review.completed = true
     await writeState(context.worktree, state)
     return JSON.stringify({
       status: "ok",
@@ -2536,7 +2526,6 @@ export const resolve_review = tool({
           tg.phases.review.quality.progress[d] = "pending"
         }
       }
-      tg.phases.review.completed = false
       tg.status = "dev_impl"
       await writeState(context.worktree, state)
       return JSON.stringify(
@@ -2565,7 +2554,14 @@ export const resolve_review = tool({
         exemptedCount++
       }
     }
-    tg.phases.review.completed = true
+    // giveup 后标记所有审查子层完成，确保 isReviewCompleted 放行
+    tg.phases.review.tool.completed = true
+    tg.phases.review.task.completed = true
+    for (const d of REVIEW_DIMENSIONS) {
+      if (tg.phases.review.quality.progress[d] !== "passed") {
+        tg.phases.review.quality.progress[d] = "passed"
+      }
+    }
     await writeState(context.worktree, state)
     return JSON.stringify(
       {

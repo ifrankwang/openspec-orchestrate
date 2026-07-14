@@ -10,7 +10,7 @@ import {
 import {
   findTaskGroup, assertOrchestrator, assertAgent, assertPassWithIssues,
   hasBlockingIssues, isBlockingIssue, handleRetryCheckpoint, allTasksVerified,
-  isReviewCompleted, computeRequiredDims, dimsWithPendingAction,
+  isReviewCompleted, computeRequiredDims, dimsWithPendingAction, isStatusUnresolved,
 } from "./derive.js"
 import { applyReviewGate, deduplicateAndAddIssues, mergeExecutionBoundary, finalizeQualityPhase } from "./review.js"
 import { readStateByWorktree, writeState } from "./state.js"
@@ -167,7 +167,10 @@ export const dev_submit = tool({
     }
 
     if (allTasksVerified(tg.tasks)) {
-      tg.phases.review.task.completed = true
+      const hasPendingTaskIssues = tg.issues.some(i => i.sourcePhase === "task" && isStatusUnresolved(i.status))
+      if (!hasPendingTaskIssues) {
+        tg.phases.review.task.completed = true
+      }
     }
 
     await writeState(context.worktree, state)
@@ -412,10 +415,10 @@ export const task_review_submit = tool({
         throw new Error(`任务层审核声称 passed=true，但存在阻塞 issue：${issueSummary} 等 ${blockingIssues.length} 个。`)
       }
     }
-    if (!args.passed && failed.length === 0) {
+    if (!args.passed && failed.length === 0 && !hasBlockingIssues(tg.issues, "task")) {
       throw new Error(
-        `任务层审核声称 passed=false，但 failed_task_ids 为空。` +
-        `passed=false 时必须至少指定一个 failed_task_id 标记不通过的 task。`
+        `任务层审核声称 passed=false，但既无 failed_task_ids 也无阻塞 issue。` +
+        `passed=false 时必须至少指定一个 failed_task_id 或提交 Low+ issue 作为不通过理由。`
       )
     }
 

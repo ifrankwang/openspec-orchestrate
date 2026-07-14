@@ -56,13 +56,19 @@ export function hasBlockingIssues(issues: Array<{ severity: string; status?: str
   return issues.some(
     (i) =>
       (!sourcePhase || i.sourcePhase === sourcePhase) &&
-      (!i.status || i.status === "open" || i.status === "rejected" || i.status === "submitted" || i.status === "exemption_requested") &&
+      isStatusUnresolved(i.status) &&
       isBlockingIssue(i)
   )
 }
 
 export function isBlockingIssue(i: { severity: string }): boolean {
   return (BLOCKING_SEVERITIES as readonly string[]).includes(i.severity)
+}
+
+export const ISSUE_UNRESOLVED_STATUSES = ["open", "rejected", "submitted", "exemption_requested"] as const
+
+export function isStatusUnresolved(status?: string): boolean {
+  return !status || (ISSUE_UNRESOLVED_STATUSES as readonly string[]).includes(status)
 }
 
 export function allTasksVerified(tasks: TaskItem[]): boolean {
@@ -72,7 +78,7 @@ export function allTasksVerified(tasks: TaskItem[]): boolean {
 export function dimsWithPendingAction(tg: TaskGroupState): Set<string> {
   const dims = new Set<string>()
   for (const i of tg.issues) {
-    if (i.status === "submitted" || i.status === "exemption_requested") dims.add(i.dimension)
+    if (i.sourcePhase === "quality" && (i.status === "submitted" || i.status === "exemption_requested")) dims.add(i.dimension)
   }
   return dims
 }

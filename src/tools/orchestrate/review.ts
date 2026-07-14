@@ -1,7 +1,7 @@
 import type { TaskGroupState, IssueItem, Dimension, OrchestrateState, ReviewDimension } from "./types.js"
 import { REVIEW_DIMENSIONS } from "./types.js"
 import { MAX_RETRIES, BLOCKING_SEVERITIES } from "./constants.js"
-import { handleRetryCheckpoint } from "./derive.js"
+import { handleRetryCheckpoint, isStatusUnresolved } from "./derive.js"
 import { writeState } from "./state.js"
 
 export function mergeExecutionBoundary(tg: TaskGroupState, expansion: { allowed_directories?: string[]; allowed_packages?: string[] }): void {
@@ -163,7 +163,7 @@ export async function finalizeQualityPhase(
 
   const failedDims = nonPassedDims.filter(d => tg.phases.review.quality.progress[d] === "failed")
   const hasResidualBlocking = tg.issues.some(
-    (i) => (i.status === "open" || i.status === "rejected" || i.status === "exemption_requested") && (BLOCKING_SEVERITIES as readonly string[]).includes(i.severity)
+    (i) => isStatusUnresolved(i.status) && (BLOCKING_SEVERITIES as readonly string[]).includes(i.severity)
   )
 
   if (failedDims.length === 0 && !hasResidualBlocking) {

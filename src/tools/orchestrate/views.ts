@@ -1,7 +1,7 @@
 import type { TaskGroupState, OrchestrateState, TaskItem, IssueItem, ReviewDimension, Dimension } from "./types.js"
 import { REVIEW_DIMENSIONS } from "./types.js"
 import { SEVERITY_LEVELS, DIMENSION_AGENT_MAP, MAX_RETRIES } from "./constants.js"
-import { deriveStatus, isReviewCompleted, allTasksVerified, deriveCurrentAgents, isBlockingIssue } from "./derive.js"
+import { deriveStatus, isReviewCompleted, allTasksVerified, deriveCurrentAgents, isBlockingIssue, isStatusUnresolved } from "./derive.js"
 
 export function taskSummary(tasks: TaskItem[]): Record<string, number> {
   const counts: Record<string, number> = { open: 0, submitted: 0, rejected: 0, verified: 0, skipped: 0 }
@@ -148,7 +148,7 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
   for (const dim of REVIEW_DIMENSIONS) {
     if (tg.phases.review.quality.progress[dim] === "passed") {
       const openInDim = tg.issues.filter(
-        (i) => i.dimension === dim && (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
+        (i) => i.dimension === dim && isStatusUnresolved(i.status) && isBlockingIssue(i)
       )
       if (openInDim.length > 0) {
         checks.push(`- ⚠️ review 内部矛盾：维度 ${dim} passed 但仍有 ${openInDim.length} 个阻塞 issue`)

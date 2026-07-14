@@ -916,3 +916,123 @@ describe("G18. tool_review_submit test_results 参数", () => {
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })
+
+// ── G20: passed=false 守卫放宽 + B2 task.completed 不 auto-set ──
+
+describe("G20. passed=false 守卫放宽 + B2 task.completed 不 auto-set", () => {
+  test("passed=false + empty failed_task_ids + Medium task issue → ok", async () => {
+    const root = `/tmp/guard-g20a-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    fakeGit.diffs.set(wt, ["src/T.java"])
+    await dev_submit.execute({}, d)
+
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, o)
+
+    await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    const result = await task_review_submit.execute({ passed: false,
+      verified_task_ids: ["1", "2"], failed_task_ids: [],
+      issues: [{ severity: "Medium", file: "x.java", line: 1, description: "Task issue", suggestion: "Fix" }],
+      fixed_issue_ids: []}, taskR)
+    const parsed = typeof result === "string" ? JSON.parse(result) : JSON.parse(result.output)
+    expect(parsed.status).toBe("recorded")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("passed=false + empty failed_task_ids + Info issue → throws", async () => {
+    const root = `/tmp/guard-g20b-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    fakeGit.diffs.set(wt, ["src/T.java"])
+    await dev_submit.execute({}, d)
+
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, o)
+
+    await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    await expect(
+      task_review_submit.execute({ passed: false,
+        verified_task_ids: ["1", "2"], failed_task_ids: [],
+        issues: [{ severity: "Info", file: "x.java", line: 1, description: "Task issue", suggestion: "Fix" }],
+        fixed_issue_ids: []}, taskR)
+    ).rejects.toThrow(/passed=false/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("dev 修复 source=task issue 后 task.completed 不被 auto-set", async () => {
+    const root = `/tmp/guard-g20c-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    fakeGit.diffs.set(wt, ["src/T.java"])
+    await dev_submit.execute({}, d)
+
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, o)
+
+    await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    // Task pass with Info issue (non-blocking → passed=true works)
+    await task_review_submit.execute({ passed: true,
+      verified_task_ids: ["1", "2"], failed_task_ids: [],
+      issues: [{ severity: "Info", file: "x.java", line: 1, description: "Minor", suggestion: "Polish" }],
+      fixed_issue_ids: []}, taskR)
+
+    const s1 = readStateSync(wt, CID)
+    const tg1 = s1.taskGroups.find((g: any) => g.id === "1")
+    const issueId = tg1.issues[0].id
+
+    // dev_submit to fix the task issue
+    fakeGit.diffs.set(tg1.worktreePath, ["src/T.java"])
+    await dev_submit.execute({ fixed_issue_ids: [issueId] }, d)
+
+    const s2 = readStateSync(wt, CID)
+    const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.phases.review.task.completed).toBe(false)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})

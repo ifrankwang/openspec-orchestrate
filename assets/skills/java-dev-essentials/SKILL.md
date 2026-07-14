@@ -26,7 +26,7 @@ mvn spring-boot:run                   # 启动应用
 - 强制 try-with-resources
 - 方法行数上限 100，类圈复杂度上限 20、方法上限 15
 - 规则集文件：`src/main/resources/pmd-rules.xml`，绑定 build 生命周期
-- 当前以 warning 为主，后续逐步收紧为 error，提前治理
+- PMD 检查返回非 0 即阻塞，不允许绕过
 
 **SonarLint**：IDE 建议安装 SonarLint 插件，尽量修复提示问题
 

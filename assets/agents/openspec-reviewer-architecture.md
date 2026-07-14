@@ -29,8 +29,11 @@ permission:
    - 优先加载项目级 skill（`.agents/skills/`），其次加载全局 skill（`~/.agents/skills/`）
    - 项目级 skill 仅在场景匹配时加载（如 Java 项目不加载前端 skill）
    - 选择与当前执行目标（开发/审查/验证）匹配的 skill
+   - 审查阶段还须查找是否存在"工具规则改进类"能力的 skill（按 available_skills 中 skill 的 description 语义匹配），若找到则必须加载；未找到则跳过工具改进 issue 环节并在报告中标注"未加载工具规则改进类 skill"
 5. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在报告中标注"未加载匹配的技术栈 skill"
-6. 当审查中发现可工具化的 pattern 问题时，报两条分离 issue：业务 issue（`file`=违规代码，指向现场）+ 工具改进 issue（`file`=规则/配置文件，`line=0` 若待新建，`suggestion` 含规则草案 + 验证命令，末尾标 `[tool_eligible]`）。按项目级工具规则改进 skill 中的模板编写规则草案
+6. 若已加载工具规则改进类 skill，审查中发现的可工具化 pattern 问题须报两条分离 issue：业务 issue（`file`=违规代码，指向现场）+ 工具改进 issue（`file`=规则/配置文件，`line=0` 若待新建，`suggestion` 含规则草案 + 验证命令，末尾标 `[tool_eligible]`）。按已加载 skill 中的模板编写规则草案。出现以下情况时工具改进 issue 为必报，非可选：
+   - 问题命中技术栈 skill 已声明的 MUST 架构/规范规则且工具未拦截
+7. 若未加载工具规则改进类 skill，则仅报业务 issue，跳过工具改进环节
 
 ## 严重级别
 

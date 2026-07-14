@@ -105,6 +105,14 @@ agent doc 禁止枚举/赘述 `opx_status` 的返回内容（字段清单、"返
 
 orchestrator agent 定义仅描述编排逻辑（分派原则、门禁诊断），不涉及被编排 agent 的审查内容、审查范围、严重级别认定等内部逻辑。这些内容属于各 agent 自身提示词范畴，出现偏差在各 agent 层面修正。
 
+### agent 与技术栈 skill 解耦（单向依赖）
+
+agent 与编排 skill 保持技术栈无关。agent 定义中不得硬编码技术栈名称、构建命令、框架约定、技术栈工具（如 Maven/PMD/ArchUnit）或具体技术栈 skill 名。
+
+agent 只按"能力类别"发起查找：读 available_skills，靠 skill 的 description 语义匹配。找到必加载，找不到则优雅降级并在报告标注。
+
+依赖方向单向为技术栈 skill → agent：反向映射由 skill 的 description/frontmatter 声明（面向哪些 agent、哪个 Phase 生效）。禁止 agent → 具体 skill 的引用。
+
 ## 测试
 
 ```bash

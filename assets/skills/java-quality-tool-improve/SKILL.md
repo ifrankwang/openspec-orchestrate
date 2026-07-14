@@ -1,6 +1,6 @@
 ---
 name: java-quality-tool-improve
-description: 仅限 Java 后端开发场景。工具规则改进指南。Phase 3 reviewer 加载，用于将 Java 项目中可工具化的 pattern 转化为具体的 ArchUnit / PMD / Spotless / SonQube 规则草案。原则：一个可工具化 pattern 报两条分离 issue——业务 issue（指违规现场）+ 工具改进 issue（指规则/配置文件，line=0 若待新建）。fixer 按工具改进 issue 的 suggestion 直接实施。
+description: 仅限 Java 后端开发场景。工具规则改进指南。Phase 3 quality reviewer（architecture/maintainability/style/performance/security）加载，用于将 Java 项目中可工具化的 pattern 转化为具体的 ArchUnit / PMD / Spotless / SonarQube 规则草案。原则：一个可工具化 pattern 报两条分离 issue——业务 issue（指违规现场）+ 工具改进 issue（指规则/配置文件，line=0 若待新建）。fixer 按工具改进 issue 的 suggestion 直接实施。
 ---
 
 ## 适用范围
@@ -29,7 +29,7 @@ tool 改进 issue 的 `file` 指向工具配置文件而非业务代码，工具
 
 | 信号 | 示例 | 对应工具 |
 |------|------|---------|
-| 包/层依赖违规 | domain 层 import Spring 注解 | ArchUnit |
+| 包/层依赖违规 | domain 层 import Spring 注解；interfaces 层直连 infrastructure 层 | ArchUnit |
 | 特定注解/命名模式违规 | 类级别 @SuppressWarnings | ArchUnit 或 PMD |
 | 特定方法签名模式违规 | domain 实体暴露 public setter | ArchUnit |
 | 代码结构/复杂度违规 | 方法超 100 行 | PMD |

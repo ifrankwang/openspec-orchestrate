@@ -95,6 +95,23 @@ public class LangChain4jAuGenAdapter implements AuGenerationPort {
 }
 ```
 
+## 共性能力基础设施化
+
+应统一拦截/封装到 Infrastructure 层或框架级能力的横向逻辑，不得分散在各 Controller/Service 中逐点调用。
+
+### 适用场景
+
+| 类别 | 示例 | 上收方式 |
+|------|------|---------|
+| 横切关注点 | 鉴权·审计·日志·限流·幂等·事务 | Filter / Interceptor / AOP（@Around/@Before/@After） |
+| 共性策略约束（全局） | 文件类型·大小限制、权限规则、脱敏规则 | 先判是否全局（跨多接口/模块），若是 → 放入 Infrastructure 层统一 Filter 或 @ControllerAdvice；若是单模块 → 控制在 Application Service 门面 |
+| 重复集成封装 | 外部 API 调用、序列化/转换、连接管理 | 公共 Client/Adapter 基类，一次封装全局复用 |
+| 散落的全局配置 | 超时·重试·线程池·白名单 | 统一在 application.yml / @ConfigurationProperties 集中管理 |
+
+### 判据
+
+同一逻辑在 ≥2 处独立实现、属横向共性需求（非单点业务上下文特有）、新增场景漏调度即失效 → 必须基础设施化。
+
 ## MapStruct
 
 ```java

@@ -36,9 +36,8 @@
 3. **commit & push（主代理 bash）**：
    - `git add -A` → `git commit`（遵循仓库风格） → `git push`
    - 如未设 remote 或 push 失败，向用户报告并停止
-4. **清缓存（主代理 bash）**：
-   - `rm -rf ~/.cache/opencode/packages/github:ifrankwang/openspec-orchestrate`
-   - 忽略目录不存在的错误
+4. **同步到缓存（主代理 bash）**：
+   - 在项目根目录执行 `bun run sync`
 
 ## 迭代日志格式
 

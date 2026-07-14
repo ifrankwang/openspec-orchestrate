@@ -122,12 +122,12 @@ bun test tests/orchestrate.flow.test.ts  # 单一文件
 
 测试通过 `FakeGitRunner`（`tests/helpers.ts`）伪造 Git，零外部依赖。`__setGitRunner()` 注入。
 
-## 升级后清除本地缓存
+## 同步本地改动到缓存
 
-OpenCode 本地缓存插件的位置在 `~/.cache/opencode/packages/github:ifrankwang/`。发布新版本后重启 OpenCode 不会自动清除缓存，需手动删除：
+发布新版本或改完插件代码后，将本地源码同步到 opencode 缓存以生效：
 
 ```bash
-rm -rf ~/.cache/opencode/packages/github:ifrankwang/openspec-orchestrate
+bun run sync
 ```
 
 否则 OpenCode 仍加载旧版缓存，导致修改不生效。

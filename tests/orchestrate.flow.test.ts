@@ -315,8 +315,8 @@ describe("2. 完整流程（无驳回）", () => {
 //  Scenario 3: 架构师复核驳回 → 修复 → 重新提交 → 完成全部流程
 // ═══════════════════════════════════════════════════
 
-describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
-  test("init → arch_submit(passed=false) → fix → arch_submit(passed=true) → set_worktree → dev → tool→task→5 dim → complete", async () => {
+describe("3. 架构师通过 → 完成全部流程", () => {
+  test("init → arch_submit(passed=true) → set_worktree → dev → tool→task→5 dim → complete", async () => {
     const root = `/tmp/ft3-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -328,22 +328,13 @@ describe("3. 架构师驳回 → 修复 → 重新提交 → 完成", () => {
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
 
-    const r1 = JSON.parse(await arch_submit.execute({ passed: false,
-      issues: [{ file: "design.md", line: 5, severity: "Medium", description: "Missing error handling section", suggestion: "Add error handling" }]}, a))
-    expect(r1.status).toBe("blocked")
-    expect(r1.phase).toBe("architect_review")
+    const r1 = JSON.parse(await arch_submit.execute({ passed: true, issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a))
+    expect(r1.status).toBe("ok")
 
     let state = readStateSync(wt, CID)
     const tg1 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg1.phases.architect_review.completed).toBe(false)
-
-    const r2 = JSON.parse(await arch_submit.execute({ passed: true, issues: [],
-      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a))
-    expect(r2.status).toBe("ok")
-
-    state = readStateSync(wt, CID)
-    const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    expect(tg2.phases.architect_review.completed).toBe(true)
+    expect(tg1.phases.architect_review.completed).toBe(true)
 
     await set_worktree.execute({}, o)
     state = readStateSync(wt, CID)

@@ -179,10 +179,10 @@ describe("G3. 重复提交守卫", () => {
   })
 })
 
-// ── G4: passed=true 带 blocking issues ──
+// ── G4: arch_submit passed=false 拒绝 ──
 
-describe("G4. assertPassWithIssues 守卫", () => {
-  test("arch_submit(passed=true) 带 Low+ issue → throws", async () => {
+describe("G4. arch_submit passed=false 拒绝", () => {
+  test("arch_submit(passed=false) → throws with question tool guidance", async () => {
     const root = `/tmp/guard-g4-${Date.now()}`
     const wt = setupWt(root, join(root, "w"))
     const fakeGit = new FakeGitRunner()
@@ -191,10 +191,9 @@ describe("G4. assertPassWithIssues 守卫", () => {
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await expect(
-      arch_submit.execute({ passed: true, issues: [
-          { file: "d.md", line: 1, severity: "Medium", description: "Missing", suggestion: "Add" },
-        ]}, a)
-    ).rejects.toThrow(/passed.*true.*issues/)
+      arch_submit.execute({ passed: false,
+        issues: [{ file: "d.md", line: 1, severity: "Medium", description: "Missing", suggestion: "Add" }]}, a)
+    ).rejects.toThrow(/question/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

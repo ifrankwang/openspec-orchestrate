@@ -18,10 +18,10 @@ import { runGit, runGitChecked, getCurrentBranch, getMergeBase, getDiffFileList,
 
 export const arch_submit = tool({
   description:
-    "架构师提交复核报告。passed=false 时复核不通过；passed=true 时 execution_boundary 必须提供。",
+    "架构师提交复核报告。必须 passed=true；execution_boundary 必填。issues 记录已修复项。",
   args: {
-    passed: tool.schema.boolean().describe("复核是否通过"),
-    issues: tool.schema.array(architectIssue).describe("问题清单（通过时为空数组）"),
+    passed: tool.schema.boolean().describe("复核是否通过（恒为 true；传 false 会被拦截报错）"),
+    issues: tool.schema.array(architectIssue).describe("已修复问题记录（含经 question 确认后补充的项）"),
     execution_boundary: executionBoundarySchema.optional().describe("developer 执行边界（passed=true 时必须提供）"),
   },
   async execute(args, context) {
@@ -32,50 +32,40 @@ export const arch_submit = tool({
     if (tg.status !== "task_analysis") {
       throw new Error(`阶段顺序错误：task_analysis 当前不在活跃阶段，当前阶段为 "${tg.status}"。`)
     }
-    assertPassWithIssues(args.passed, args.issues, "opx_arch_submit")
-    if (args.passed) {
-      if (!args.execution_boundary) {
-        throw new Error("passed=true 时必须提供 execution_boundary。")
-      }
-      tg.executionBoundary = args.execution_boundary
-      tg.phases.architect_review.completed = true
-      const changeDir = `openspec/changes/${state.changeId}`
-      const statusResult = await runGitChecked(context.worktree, ["status", "--porcelain", changeDir])
-      if (!statusResult.success) {
-        throw new Error(`git status openspec 文档失败：${statusResult.stderr}`)
-      }
-      if (statusResult.stdout) {
-        const addResult = await runGitChecked(context.worktree, ["add", changeDir])
-        if (!addResult.success) {
-          throw new Error(`git add openspec docs 失败：${addResult.stderr}`)
-        }
-        const commitResult = await runGitChecked(context.worktree, [
-          "commit", "-m", `docs(openspec): refine specs for task-group ${state.taskGroupId}`,
-        ])
-        if (!commitResult.success) {
-          throw new Error(`git commit openspec docs 失败：${commitResult.stderr}`)
-        }
-      }
-      await writeState(context.worktree, state)
-      return JSON.stringify(
-        {
-          status: "ok",
-          phase: "architect_review=completed",
-          execution_boundary: args.execution_boundary,
-          message: "复核通过，职责已完成，请立即结束当前会话。",
-        },
-        null,
-        2
+    if (!args.passed) {
+      throw new Error(
+        "架构师不得提交 passed=false。需用户拍板的信息缺口，请在当前会话内用 question 工具逐条与用户确认后，自行编辑对应 md 修复，再以 passed=true 提交。"
       )
+    }
+    if (!args.execution_boundary) {
+      throw new Error("passed=true 时必须提供 execution_boundary。")
+    }
+    tg.executionBoundary = args.execution_boundary
+    tg.phases.architect_review.completed = true
+    const changeDir = `openspec/changes/${state.changeId}`
+    const statusResult = await runGitChecked(context.worktree, ["status", "--porcelain", changeDir])
+    if (!statusResult.success) {
+      throw new Error(`git status openspec 文档失败：${statusResult.stderr}`)
+    }
+    if (statusResult.stdout) {
+      const addResult = await runGitChecked(context.worktree, ["add", changeDir])
+      if (!addResult.success) {
+        throw new Error(`git add openspec docs 失败：${addResult.stderr}`)
+      }
+      const commitResult = await runGitChecked(context.worktree, [
+        "commit", "-m", `docs(openspec): refine specs for task-group ${state.taskGroupId}`,
+      ])
+      if (!commitResult.success) {
+        throw new Error(`git commit openspec docs 失败：${commitResult.stderr}`)
+      }
     }
     await writeState(context.worktree, state)
     return JSON.stringify(
       {
-        status: "blocked",
-        phase: "architect_review",
-        issue_count: args.issues.length,
-        issues: args.issues,
-        message: "复核不通过，职责已完成，请立即结束当前会话。",
+        status: "ok",
+        phase: "architect_review=completed",
+        execution_boundary: args.execution_boundary,
+        message: "复核通过，职责已完成，请立即结束当前会话。",
       },
       null,
       2

@@ -7,7 +7,7 @@
 | `bun test` | 运行所有测试 |
 | `bun run typecheck` | TypeScript 类型检查（tsc --noEmit） |
 
-没有 tsconfig.json——Bun 使用默认配置。
+tsconfig.json 已在项目根，typecheck 经 tsc 按其配置严格检查 `src/`。
 
 ## 项目结构
 

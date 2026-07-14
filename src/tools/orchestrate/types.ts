@@ -3,7 +3,7 @@ export const REVIEW_DIMENSIONS = [...CODE_DIMENSIONS] as const
 export type ReviewDimension = typeof REVIEW_DIMENSIONS[number]
 export type Dimension = ReviewDimension
 
-export const TASK_STATUSES = ["open", "submitted", "rejected", "verified", "skipped"] as const
+export const TASK_STATUSES = ["open", "submitted", "rejected", "verified"] as const
 export type TaskStatus = typeof TASK_STATUSES[number]
 export const ISSUE_STATUSES = ["open", "submitted", "rejected", "verified", "exemption_requested", "exempted"] as const
 export type IssueStatus = typeof ISSUE_STATUSES[number]

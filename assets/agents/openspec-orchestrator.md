@@ -86,7 +86,7 @@ permission:
 ## 任务组 N 审查汇总
 
 ### 概览
-- task: open=X, submitted=Y, rejected=Z, verified=W, skipped=V
+- task: open=X, submitted=Y, rejected=Z, verified=W
 - issue: open=A, submitted=B, rejected=C, verified=D, exemption_requested=E, exempted=F
 
 ### 处理情况

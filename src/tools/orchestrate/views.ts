@@ -4,7 +4,7 @@ import { SEVERITY_LEVELS, DIMENSION_AGENT_MAP, MAX_RETRIES } from "./constants.j
 import { deriveStatus, isReviewCompleted, allTasksVerified, deriveCurrentAgents, isBlockingIssue, isStatusUnresolved } from "./derive.js"
 
 export function taskSummary(tasks: TaskItem[]): Record<string, number> {
-  const counts: Record<string, number> = { open: 0, submitted: 0, rejected: 0, verified: 0, skipped: 0 }
+  const counts: Record<string, number> = { open: 0, submitted: 0, rejected: 0, verified: 0 }
   for (const t of tasks) counts[t.status]++
   return counts
 }
@@ -82,7 +82,6 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
   lines.push(`| submitted | ${ts.submitted} |`)
   lines.push(`| rejected | ${ts.rejected} |`)
   lines.push(`| verified | ${ts.verified} |`)
-  lines.push(`| skipped | ${ts.skipped} |`)
   lines.push("")
   lines.push("## Issue 摘要", "")
   lines.push(`| 状态 | 数量 |`)

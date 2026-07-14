@@ -33,7 +33,7 @@ description: 仅限 Java 后端开发场景。确定性质量门工具集。Phas
 
 ## 0. 工具环境检查
 
-在执行工具检查前，先确保工具运行环境就绪。不可用的工具生成 type=tool 的 issue，而非直接报错。
+在执行工具检查前，先确保工具运行环境就绪。环境检查失败时先按自愈性步骤尝试恢复；不可自愈或自愈失败后，用 `question` 提请用户处理或裁定。用户裁定降级跳过时，在报告中注明降级理由，不阻塞其他检查。本条检查正常提交结果（不涉及 issue 生成）。
 
 ```bash
 docker info
@@ -42,14 +42,12 @@ curl -sf http://localhost:9000/api/system/status | grep -q UP
 sonar-scanner --version
 ```
 
-| 检查项 | 命令 | 失败时 severity | 处理方式 |
-|--------|------|----------------|---------|
-| Docker daemon | `docker info` | Critical | Docker daemon 未运行 → tool 类 issue，SonarQube 扫描无法执行 |
-| docker-compose | `docker compose version` | Critical | docker-compose 不可用 → tool 类 issue，SonarQube 扫描无法执行 |
-| SonarQube 服务 | `curl -sf http://localhost:9000/api/system/status \| grep -q UP` | Critical | SonarQube 服务未健康运行（或未启动）→ tool 类 issue，SonarQube 扫描无法执行 |
-| sonar-scanner CLI | `sonar-scanner --version` | Medium | CLI 未安装 → tool 类 issue，SonarQube 扫描降级为跳过（不阻塞其他检查项） |
-
-Docker 或 SonarQube 服务检查失败时后续 SonarQube 扫描章节直接跳过（在提交报告中注明原因），其余工具检查照常执行。sonar-scanner 缺失同理。
+| 检查项 | 命令 | 自愈性 | 失败后处理 |
+|--------|------|-------|-----------|
+| Docker daemon | `docker info` | 不可自愈 | `question` 用户（需宿主介入）→ 用户处理后重试或裁定降级跳过 |
+| docker-compose | `docker compose version` | 不可自愈 | `question` 用户 → 用户处理后重试或裁定降级跳过 |
+| SonarQube 服务 | `curl -sf http://localhost:9000/api/system/status \| grep -q UP` | 可自愈 | 先 `docker compose ... up -d sonarqube` 自愈；失败则 `question` 用户 → 裁定降级 |
+| sonar-scanner CLI | `sonar-scanner --version` | 不可自愈 | `question` 用户（需安装 CLI）→ 用户处理后重试或裁定降级 |
 
 ## 1. 编译检查
 
@@ -58,7 +56,7 @@ mvn compile -q
 ```
 
 - 通过：编译无错误，输出 "BUILD SUCCESS"
-- 不通过：→ tool 类 issue，severity=Critical，developer 必须修复
+- 不通过：→ 工具层 issue，severity=Critical，developer 必须修复
 
 ## 2. 代码格式检查
 
@@ -129,7 +127,7 @@ mvn test
 排除 `ArchitectureTest`（已在步骤 3 单独跑）。
 
 - 通过：所有测试通过
-- 不通过：→ tool 类 issue，severity 按测试类型区分
+- 不通过：→ 工具层 issue，severity 按测试类型区分
   - 业务逻辑测试失败 → High（功能回归）
   - 新增功能测试失败 → Medium（新代码 Bug）
   - 测试基础设施问题 → Critical（环境问题）
@@ -148,7 +146,7 @@ cat target/site/jacoco/jacoco.csv
 | BRANCH_MISSED/COVERED | 分支覆盖率 |
 | LINE_MISSED/COVERED | 行覆盖率 |
 
-覆盖率不达标 → tool 类 issue。阈值建议：指令覆盖率 < 60% 为 Medium，分支覆盖率 < 50% 为 Low。
+覆盖率不达标 → 工具层 issue。阈值建议：指令覆盖率 < 60% 为 Medium，分支覆盖率 < 50% 为 Low。
 
 ## 6. SonarQube 深度扫描
 
@@ -208,7 +206,7 @@ git diff --name-only <baseRef>..HEAD | grep -E "(pmd-rules\.xml|sonar-project\.p
 检查结果：
 
 - 配置无削弱 → 通过
-- 配置存在削弱 → tool 类 issue，severity=Medium，每条削弱映射为一个 issue
+- 配置存在削弱 → 工具层 issue，severity=Medium，每条削弱映射为一个 issue
 
 ## 8. 工具输出 → 统一 issue dimension 映射表
 

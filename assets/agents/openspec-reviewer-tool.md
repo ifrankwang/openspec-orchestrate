@@ -54,6 +54,9 @@ permission:
 按质量门 skill 中定义的顺序逐项执行工具检查。所有检查项均阻塞 review 通过：
 
 1. 工具环境检查
+
+   环境检查失败时，先按质量门 skill 中的自愈步骤尝试恢复；不可自愈或自愈失败用 `question` 工具提请用户处理或裁定。环境问题不走 issue 生成和回退开发路径，不直接终止会话。用户裁定降级时，在报告中注明降级理由，继续执行其余检查。
+
 2. 编译检查
 3. 代码格式检查
 4. 架构约束检查
@@ -124,6 +127,6 @@ permission:
 
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_tool_review_submit`（提交）。完成审核后**必须**调用 `opx_tool_review_submit` 提交。即使无 issue，也必须提交 passed=true。
+仅可调用：`opx_status`（只读）、`opx_tool_review_submit`（提交）、`question`（自愈失效时提请用户处理/裁定）。完成审核后**必须**调用 `opx_tool_review_submit` 提交。即使无 issue，也必须提交 passed=true。
 
 禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_task_review_submit`、`opx_quality_review_submit` 等任何其它编排工具。

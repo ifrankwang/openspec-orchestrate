@@ -1,6 +1,6 @@
 import type { OrchestrateState } from "./types.js"
 import { readStateByWorktree } from "./state.js"
-import { deriveStatus } from "./derive.js"
+import { deriveStatus, isReviewCompleted } from "./derive.js"
 
 export async function readDashboardState(worktree: string) {
   const state = await readStateByWorktree(worktree)
@@ -19,12 +19,15 @@ export async function readDashboardState(worktree: string) {
       taskCount: tg.taskCount,
       status: tg.status,
       lifecycle: deriveStatus(tg, state.taskGroupId),
+      reviewCompleted: isReviewCompleted(tg),
       worktreePath: tg.worktreePath,
       branchName: tg.branchName,
       relevantSpecs: tg.relevantSpecs,
+      lastFilesChanged: tg.lastFilesChanged,
       phases: tg.phases,
       tasks: tg.tasks,
       issues: tg.issues,
+      blockers: tg.blockers,
     })),
   }
 }

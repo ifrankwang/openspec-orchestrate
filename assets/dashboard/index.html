@@ -3,443 +3,48 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>编排进度看板</title>
-<script src="https://unpkg.com/lucide@latest"></script>
 <style>
-:root {
-  --bg: #f6f8fa;
-  --surface: #fff;
-  --surface-hover: #f3f4f6;
-  --border: #d0d7de;
-  --border-bright: #8b949e;
-  --text: #1f2328;
-  --text-dim: #656d76;
-  --text-muted: #959da5;
-  --green: #2da44e; --green-bg: rgba(45,164,78,0.1);
-  --blue: #0969da; --blue-bg: rgba(9,105,218,0.1);
-  --yellow: #9a6700; --yellow-bg: rgba(154,103,0,0.1);
-  --red: #cf222e; --red-bg: rgba(207,34,46,0.08);
-  --orange: #bf4c17; --orange-bg: rgba(191,76,23,0.1);
-  --purple: #8250df; --purple-bg: rgba(130,80,223,0.1);
-  --gray: #6e7681; --gray-bg: rgba(110,118,129,0.08);
-  --radius: 8px; --radius-sm: 4px;
-  --mono: 'SF Mono','JetBrains Mono','Fira Code',monospace;
-  --sans: -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{font-size:14px;background:var(--bg);color:var(--text)}
-body{font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:24px;max-width:1200px;margin:0 auto;min-height:100vh}
-code,.mono{font-family:var(--mono)}
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-
-.header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.header-title{font-size:15px;font-weight:600}
-.header-title .ident{color:var(--blue);font-weight:400;font-size:13px;font-family:var(--mono);margin-left:2px}
-.header-meta{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--text-dim)}
-.poll-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-
-.icon-step{width:22px;height:22px}.icon-fill{fill:currentColor;stroke:currentColor;stroke-width:2}
-.icon-gate{width:14px;height:14px}.icon-badge{width:12px;height:12px}
-.icon-dot{width:10px;height:10px}.icon-meta{width:12px;height:12px;vertical-align:-2px;stroke-width:2.5}
-
-.progress{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.progress-title{font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:10px;letter-spacing:.5px}
-.progress-steps{display:flex;flex-direction:column;gap:0}
-.pstep{display:flex;align-items:flex-start;gap:10px;padding:6px 0;position:relative;min-height:34px}
-.pstep::before{content:'';position:absolute;left:10px;top:28px;bottom:-6px;width:2px;background:var(--border)}
-.pstep:last-child::before{display:none}
-.pstep-icon{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;position:relative;z-index:1;margin-top:2px}
-.pstep-icon.done{color:var(--green)}
-.pstep-icon.active{color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg);border-radius:50%}
-.pstep-icon.pending{color:var(--text-muted)}
-.pstep-body{flex:1;min-width:0}
-.pstep-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:2px}
-.pstep-title .step-tag{font-size:10px;font-weight:400;color:var(--text-muted);font-family:var(--mono);background:var(--gray-bg);padding:0 5px;border-radius:3px}
-.pstep-meta{font-size:12px;color:var(--text-dim);line-height:1.6}
-.pstep-meta code{font-size:11px;background:var(--gray-bg);padding:0 5px;border-radius:3px;color:var(--text);word-break:break-all}
-
-.review-gates{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
-.rgate{display:flex;align-items:center;gap:3px;padding:3px 8px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;font-family:var(--sans)}
-.rgate.pass{background:var(--green-bg);color:var(--green)}
-.rgate.busy{background:var(--blue-bg);color:var(--blue)}
-.rgate.wait{background:var(--gray-bg);color:var(--text-dim)}
-.quality-dims{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:4px;padding-left:2px}
-.qdim{font-size:11px;padding:1px 6px;border-radius:3px;font-weight:500;font-family:var(--sans);display:flex;align-items:center;gap:3px}
-.qdim.pass{color:var(--green)}.qdim.busy{color:var(--blue)}.qdim.wait{color:var(--text-muted)}
-.retry-badge{font-size:11px;color:var(--text-muted);padding:2px 7px;background:var(--gray-bg);border-radius:var(--radius-sm);display:inline-flex;align-items:center;gap:3px;font-family:var(--sans)}
-
-.columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.column{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-height:380px;max-height:calc(100vh - 300px);box-shadow:0 1px 2px rgba(0,0,0,.04)}
-
-.tabs{display:flex;gap:1px;padding:10px 14px 0;overflow-x:auto;flex-shrink:0;border-bottom:1px solid var(--border)}
-.tab{padding:5px 9px 7px;font-size:12px;cursor:pointer;color:var(--text-dim);font-weight:500;white-space:nowrap;background:transparent;border:none;border-bottom:2px solid transparent;font-family:var(--sans);transition:all .15s;display:flex;align-items:center;gap:3px}
-.tab:hover{color:var(--text)}
-.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
-.tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;font-size:10px;border-radius:3px;background:var(--border);color:var(--text-muted);line-height:1}
-.tab.active .tab-count{background:var(--blue-bg);color:var(--blue)}
-.tab-hidden{display:none}
-
-.card-list{padding:12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
-.empty-state{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px}
-.loading-state{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px}
-
-.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;transition:border .15s}
-.card:hover{border-color:var(--border-bright)}
-
-.card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.card-hl{display:flex;align-items:center;flex-wrap:wrap;gap:5px;flex:1;min-width:0}
-.card-hr{display:flex;align-items:center;gap:4px;flex-shrink:0}
-.card-id{font-size:11px;font-weight:500;color:var(--text-muted);font-family:var(--mono);flex-shrink:0}
-.card-task-title{font-size:13px;font-weight:600;color:var(--text);line-height:1.35;word-break:break-word;flex:1;min-width:120px}
-.card-sev{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;line-height:1.3;font-family:var(--sans)}
-.card-sev.critical{background:var(--red-bg);color:var(--red)}
-.card-sev.high{background:var(--orange-bg);color:var(--orange)}
-.card-sev.medium{background:var(--yellow-bg);color:var(--yellow)}
-.card-sev.low{background:var(--green-bg);color:var(--green)}
-.card-sev.info{background:var(--gray-bg);color:var(--gray)}
-.card-dim{display:inline-flex;align-items:center;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;line-height:1.3;color:var(--purple);background:var(--purple-bg);font-family:var(--sans)}
-.card-file{font-size:11px;font-family:var(--mono);color:var(--text-dim);word-break:break-all;line-height:1.35;margin-top:3px;flex-basis:100%}
-.card-sb{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;line-height:1.3;white-space:nowrap;font-family:var(--sans)}
-.card-sb.open{background:var(--blue-bg);color:var(--blue)}
-.card-sb.submitted{background:var(--yellow-bg);color:var(--yellow)}
-.card-sb.rejected{background:var(--red-bg);color:var(--red)}
-.card-sb.verified{background:var(--green-bg);color:var(--green)}
-
-.card-sb.exemption{background:var(--orange-bg);color:var(--orange)}
-.card-sb.exempted{background:var(--gray-bg);color:var(--text-muted)}
-.card-meta-tag{display:inline-flex;align-items:center;gap:2px;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;line-height:1.3}
-.card-meta-tag.refix{color:var(--red);background:rgba(207,34,46,0.1)}
-
-.card-divider{height:1px;background:var(--border);margin:8px 0 6px;border:none;flex-basis:100%}
-.card-body{font-size:12px}
-.card-row{display:flex;gap:4px;margin-top:3px}
-.card-row:first-child{margin-top:0}
-.card-k{color:var(--text);font-weight:600;font-family:var(--sans);white-space:nowrap;min-width:32px;flex-shrink:0}
-.card-v{color:var(--text-dim);font-family:var(--mono);word-break:break-word;line-height:1.5}
-.card-v.msg{font-family:var(--sans)}
-
-@media(max-width:800px){.columns{grid-template-columns:1fr}.column{min-height:280px;max-height:50vh}}
+:root{color-scheme:light dark;--canvas:#f4f6f9;--surface:#fff;--line:#dbe2eb;--ink:#1c2736;--muted:#637287;--quiet:#8a98aa;--blue:#1767d1;--blue-wash:#eaf2ff;--green:#08794c;--green-wash:#dcf3e6;--amber:#946000;--amber-wash:#fff1d1;--red:#b92a43;--red-wash:#ffe5e9;--violet:#6749b9;--violet-wash:#eeeaff;--shadow:0 10px 30px rgba(29,47,74,.055);--sans:"Fira Sans","Noto Sans SC",system-ui,sans-serif;--mono:"SFMono-Regular","Cascadia Code","Roboto Mono",monospace}
+@media(prefers-color-scheme:dark){:root{--canvas:#0d1520;--surface:#131f2d;--line:#2a3d55;--ink:#eff5fc;--muted:#aebdd0;--quiet:#7e90a8;--blue:#72adff;--blue-wash:#173c6d;--green:#54d49a;--green-wash:#113d2c;--amber:#f4c161;--amber-wash:#4c3611;--red:#ff8ca1;--red-wash:#51212c;--violet:#c8b4ff;--violet-wash:#35255d;--shadow:none}}
+*{box-sizing:border-box}html{background:var(--canvas);color:var(--ink);font-size:15px}body{margin:0;min-width:320px;font-family:var(--sans);background:radial-gradient(ellipse 55rem 30rem at 50% -15rem,var(--blue-wash),transparent),var(--canvas)}button{font:inherit}button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}.shell{max-width:1400px;margin:auto;padding:30px 24px 50px}.topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:0 2px 22px;border-bottom:1px solid var(--line)}.brand-line{display:flex;align-items:center;gap:8px;color:var(--muted);font:600 .7rem/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px var(--green-wash)}h1{margin:9px 0 0;font-size:1.35rem;letter-spacing:-.045em}.session-meta{display:flex;gap:18px;align-items:flex-end;color:var(--muted);font:.72rem/1.35 var(--mono);text-align:right}.session-meta strong{display:block;color:var(--ink);font-size:.8rem;font-weight:600;margin-top:3px}.group-strip{display:flex;gap:7px;overflow-x:auto;padding:16px 1px 21px}.group-button{flex:0 0 auto;display:grid;grid-template-columns:auto auto;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted);padding:8px 10px;cursor:pointer;font-size:.76rem}.group-button:hover{border-color:var(--blue);color:var(--ink)}.group-button[aria-selected="true"]{border-color:var(--blue);background:var(--blue-wash);color:var(--ink);box-shadow:inset 0 -2px var(--blue)}.group-number{color:var(--quiet);font:.66rem/1 var(--mono)}.tag{display:inline-flex;align-items:center;justify-content:center;min-width:42px;border-radius:999px;padding:3px 6px;font:600 .65rem/1 var(--mono);white-space:nowrap}.tag.in_progress,.tag.open,.tag.submitted,.tag.awaiting_user,.tag.ready_for_architect,.tag.pending{background:var(--blue-wash);color:var(--blue)}.tag.completed,.tag.verified,.tag.resolved,.tag.passed{background:var(--green-wash);color:var(--green)}.tag.rejected,.tag.failed,.tag.critical,.tag.high{background:var(--red-wash);color:var(--red)}.tag.exemption_requested,.tag.reported,.tag.medium{background:var(--amber-wash);color:var(--amber)}.tag.exempted,.tag.low,.tag.info{background:var(--canvas);color:var(--muted);border:1px solid var(--line)}.focus{display:flex;align-items:flex-end;justify-content:space-between;gap:26px;padding:22px 24px;background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:var(--shadow)}.eyebrow{color:var(--quiet);font:600 .67rem/1 var(--mono);letter-spacing:.12em;text-transform:uppercase}.focus h2{margin:8px 0 6px;font-size:clamp(1.55rem,3.2vw,2.35rem);letter-spacing:-.055em;line-height:1.08}.branch{margin:0;color:var(--muted);font:.76rem/1.5 var(--mono);word-break:break-all}.metrics{display:flex;align-items:stretch;flex:0 0 auto}.metric{min-width:82px;padding:0 14px;border-left:1px solid var(--line)}.metric:first-child{border:0}.metric-value{display:block;font:700 1.25rem/1 var(--mono);letter-spacing:-.07em}.metric-label{display:block;margin-top:5px;color:var(--muted);font-size:.68rem;white-space:nowrap}.stage{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;box-shadow:var(--shadow);overflow:hidden}.stage-item{position:relative;min-height:96px;padding:17px 18px;border-left:1px solid var(--line)}.stage-item:first-child{border:0}.stage-item::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--line)}.stage-item.done::before{background:var(--green)}.stage-item.active{background:var(--blue-wash)}.stage-item.active::before{background:var(--blue)}.stage-name{display:block;font:700 .78rem/1.2 var(--mono)}.stage-state{display:block;color:var(--muted);font-size:.73rem;margin-top:6px}.gates{display:flex;gap:4px;flex-wrap:wrap;margin-top:10px}.gate{padding:3px 4px;border-radius:3px;background:var(--canvas);color:var(--quiet);font:600 .61rem/1 var(--mono)}.gate.passed{background:var(--green-wash);color:var(--green)}.gate.failed{background:var(--red-wash);color:var(--red)}.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}.panel{overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 18px 16px;border-bottom:1px solid var(--line)}.panel-head h3{font-size:1rem;margin:0}.panel-head p{margin:5px 0 0;color:var(--muted);font-size:.73rem}.count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;border-radius:999px;padding:4px 7px;background:var(--canvas);border:1px solid var(--line);color:var(--muted);font:600 .67rem/1 var(--mono)}.task,.item{padding:14px 18px;border-bottom:1px solid var(--line)}.task:last-child,.item:last-child{border-bottom:0}.task{display:grid;grid-template-columns:55px minmax(0,1fr);gap:10px}.task-id{padding-top:2px;color:var(--quiet);font:.65rem/1.5 var(--mono)}.task-title,.item-title{font-size:.8rem;font-weight:600;line-height:1.45}.task-trace,.item-note{margin-top:5px;color:var(--muted);font:.67rem/1.45 var(--mono);word-break:break-all}.item-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.item-id{color:var(--quiet);font:.65rem/1.35 var(--mono);word-break:break-all}.item-meta{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}.empty{padding:28px 18px;text-align:center;color:var(--muted);font-size:.8rem}.error{color:var(--red)}@media(max-width:1050px){.board{grid-template-columns:repeat(2,minmax(0,1fr))}.board .panel:last-child{grid-column:span 2}}@media(max-width:700px){.focus{align-items:flex-start;flex-direction:column}.metrics{width:100%}.metric{flex:1}.stage{grid-template-columns:repeat(2,minmax(0,1fr))}.stage-item:nth-child(3){border-left:0}.stage-item:nth-child(-n+2){border-bottom:1px solid var(--line)}.board{grid-template-columns:1fr}.board .panel:last-child{grid-column:auto}}@media(max-width:560px){.shell{padding:20px 14px 35px}.topbar{align-items:flex-start;flex-direction:column;gap:14px}.session-meta{text-align:left;gap:13px}.focus{padding:19px}.metrics{flex-wrap:wrap;gap:12px}.metric{flex:0 0 calc(50% - 6px);border:0;padding:0}.stage{grid-template-columns:1fr}.stage-item,.stage-item:nth-child(3){border-left:0;border-bottom:1px solid var(--line)}.stage-item:last-child{border-bottom:0}.task,.item{padding-left:16px;padding-right:16px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.review-detail{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}.review-lane{padding:16px 18px;border-left:1px solid var(--line)}.review-lane:first-child{border:0}.review-kicker{display:block;color:var(--quiet);font:600 .64rem/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}.review-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;font-size:.82rem}.quality-verdicts{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}.quality-verdicts .tag{min-width:0}@media(max-width:700px){.review-detail{grid-template-columns:1fr}.review-lane{border-left:0;border-top:1px solid var(--line)}.review-lane:first-child{border-top:0}}
 </style>
 </head>
 <body>
-
-<div class="header">
-  <div class="header-title">编排进度看板 <span class="ident" id="changeId"></span></div>
-  <div class="header-meta">
-    <span class="poll-dot" id="pollDot"></span>
-    <span id="pollLabel">轮询 2s</span>
-    <span style="color:var(--border)">|</span>
-    <span id="baseInfo"></span>
-    <span style="color:var(--border)">|</span>
-    <span id="updateTime"></span>
-  </div>
+<div class="shell">
+  <header class="topbar"><div><div class="brand-line"><span class="live-dot" id="liveDot"></span><span id="connectionLabel">同步状态</span></div><h1>编排进度看板</h1></div><div class="session-meta"><span>变更<strong id="changeId">加载中</strong></span><span>基准分支<strong id="baseBranch">-</strong></span><span>最后更新<strong id="updatedAt">-</strong></span></div></header>
+  <nav class="group-strip" id="groupList" aria-label="任务组"></nav>
+  <main id="dashboard" aria-live="polite"><div class="empty">正在获取编排状态...</div></main>
 </div>
-
-<div class="progress" id="progressSection">
-  <div class="progress-title">执  行  进  度</div>
-  <div class="progress-steps" id="progressSteps"></div>
-</div>
-
-<div class="columns" id="columns">
-  <div class="column">
-    <div class="tabs" id="taskTabs"></div>
-    <div class="card-list" id="taskList"></div>
-  </div>
-  <div class="column">
-    <div class="tabs" id="issueTabs"></div>
-    <div class="card-list" id="issueList"></div>
-  </div>
-</div>
-
 <script>
-// ─── config ───
-const PHASE_STEPS = [
-  { key: 'task_analysis',  label: '\u9700\u6c42\u5206\u6790', tag: 'architect review', gate: false },
-  { key: 'dev_impl',       label: '\u5f00\u53d1\u5b9e\u65bd', tag: 'dev_impl',         gate: false },
-  { key: 'review',         label: '\u5ba1\u67e5',             tag: 'review',           gate: true  },
-  { key: 'completed',      label: '\u5df2\u5b8c\u6210',       tag: 'completed',        gate: false },
-]
-
-const taskStatusLabels = {open:'\u5f85\u5904\u7406',submitted:'\u5f85\u9a8c\u8bc1',rejected:'\u5df2\u9a73\u56de',verified:'\u5df2\u9a8c\u8bc1'}
-const issueStatusLabels = {open:'\u5f85\u5904\u7406',submitted:'\u5f85\u9a8c\u8bc1',rejected:'\u5df2\u9a73\u56de',verified:'\u5df2\u9a8c\u8bc1',exemption:'\u8042\u514d\u7533\u8bf7',exempted:'\u5df2\u8042\u514d'}
-const severityLabels = {Critical:'\u4e25\u91cd',High:'\u9ad8\u5371',Medium:'\u4e2d\u5371',Low:'\u4f4e\u5371',Info:'\u63d0\u793a'}
-const dimLabels = {security:'\u5b89\u5168',performance:'\u6027\u80fd',style:'\u98ce\u683c',architecture:'\u67b6\u6784',maintainability:'\u53ef\u7ef4\u62a4'}
-const badgeIcons = {open:'circle',submitted:'clock',rejected:'x',verified:'check',exemption:'help-circle',exempted:'check'}
-const DIM_KEYS = ['style','architecture','performance','security','maintainability']
-const taskStatusOrder = ['open','submitted','rejected','verified']
-const issueStatusOrder = ['open','submitted','rejected','exemption','exempted','verified']
-
-let taskTab = 'all', issueTab = 'all', state = null, pollTimer = null
-
-// ─── helpers ───
-function st(s) { return s ? s.toString() : '' }
-function phaseIdx(p) { return PHASE_STEPS.findIndex(s => s.key === p) }
-
-function renderPhase(tg) {
-  const cur = phaseIdx(tg.status)
-  const arcDone = tg.phases.architect_review.completed
-  const devDone = tg.phases.dev_impl.completed
-  const revDone = tg.phases.review.completed
-  const isComp = tg.status === 'completed'
-
-  // step states: 0=pending,1=active,2=done
-  function stepState(i) {
-    if (i === 0) return arcDone ? 2 : (cur === 0 ? 1 : 0)
-    if (i === 1) {
-      if (tg.lifecycle === 'not_started') return 0
-      if (isComp || devDone) return 2
-      return cur === 1 ? 1 : (cur > 1 ? 2 : 0)
-    }
-    if (i === 2) {
-      if (revDone) return 2
-      if (cur === 2) return 1
-      if (isComp || cur > 2) return 2
-      return 0
-    }
-    if (i === 3) return isComp ? 2 : 0
-    return 0
-  }
-
-  return PHASE_STEPS.map((s, i) => {
-    const ss = stepState(i)
-    const cls = ss === 2 ? 'done' : ss === 1 ? 'active' : 'pending'
-    const icon = ss === 2 ? '<i data-lucide="check-circle-2" class="icon-step icon-fill"></i>'
-      : ss === 1 ? '<i data-lucide="circle" class="icon-step icon-fill"></i>'
-      : '<i data-lucide="circle-dashed" class="icon-step"></i>'
-
-    let meta = ''
-    if (i === 0 && ss === 2) meta = '<div class="pstep-meta">架构师已复核通过</div>'
-    if (i === 1 && (ss === 1 || ss === 2)) {
-      const parts = []
-      if (tg.worktreePath) parts.push('<i data-lucide="git-branch" class="icon-meta"></i> <code>' + tg.worktreePath + '</code>')
-      if (tg.branchName) parts.push('<code>' + tg.branchName + '</code>')
-      if (parts.length) meta = '<div class="pstep-meta">' + parts.join(' <span style="color:var(--text-muted)">\u00b7</span> ') + '</div>'
-    }
-
-    let gateHtml = ''
-    if (s.gate && ss > 0) {
-      const r = tg.phases.review
-      const toolDone = r.tool.completed
-      const taskDone = r.task.completed
-      const qualityDone = r.quality.completed
-
-      const gateCls = (d) => d ? 'pass' : (ss === 1 ? 'wait' : 'pass')
-      const gateIcon = (d) => d ? '<i data-lucide="check" class="icon-gate"></i>' : '<i data-lucide="clock" class="icon-gate"></i>'
-
-      gateHtml += '<div class="review-gates">' + [
-        '<span class="rgate ' + gateCls(toolDone) + '">' + gateIcon(toolDone) + ' tool review</span>',
-        '<span class="rgate ' + gateCls(taskDone) + '">' + gateIcon(taskDone) + ' task review</span>',
-        '<span class="rgate ' + gateCls(qualityDone) + '">' + gateIcon(qualityDone) + ' quality review</span>',
-      ].join('') + '</div>'
-
-      if (r.retryCount > 0) {
-        gateHtml = gateHtml.replace('review', 'review <span class="retry-badge"><i data-lucide="refresh-cw" class="icon-meta"></i> \u91cd\u8bd5 ' + r.retryCount + '/3</span>')
-      }
-
-      if (!qualityDone || ss === 1) {
-        const dims = DIM_KEYS.map(k => {
-          const p = r.quality.progress[k]
-          if (!p) return '<span class="qdim wait"><i data-lucide="circle-dashed" class="icon-dot"></i> ' + dimLabels[k] + '</span>'
-          if (p.passed) return '<span class="qdim pass"><i data-lucide="check" class="icon-dot"></i> ' + dimLabels[k] + '</span>'
-          if (p.submitted) return '<span class="qdim busy"><i data-lucide="circle" class="icon-dot icon-fill"></i> ' + dimLabels[k] + '</span>'
-          return '<span class="qdim wait"><i data-lucide="circle-dashed" class="icon-dot"></i> ' + dimLabels[k] + '</span>'
-        }).join('')
-        gateHtml += '<div class="quality-dims">' + dims + '</div>'
-      }
-    }
-
-    return '<div class="pstep"><div class="pstep-icon ' + cls + '">' + icon + '</div><div class="pstep-body"><div class="pstep-title">' + s.label + ' <span class="step-tag">' + s.tag + '</span></div>' + meta + gateHtml + '</div></div>'
-  }).join('')
-}
-
-function renderEmpty() {
-  document.getElementById('changeId').textContent = ''
-  document.getElementById('baseInfo').textContent = ''
-  document.getElementById('updateTime').textContent = ''
-  document.getElementById('progressSteps').innerHTML = '<div class="pstep"><div class="pstep-body"><div class="empty-state" style="padding:32px 0">\u6682\u65e0\u6d3b\u8dc3\u7f16\u6392\u4f1a\u8bdd</div></div></div>'
-  document.getElementById('taskTabs').innerHTML = ''
-  document.getElementById('taskList').innerHTML = ''
-  document.getElementById('issueTabs').innerHTML = ''
-  document.getElementById('issueList').innerHTML = ''
-}
-
-function renderHeader(tg) {
-  document.getElementById('changeId').textContent = state.changeId
-  document.getElementById('baseInfo').textContent = 'base: ' + (state.baseBranch || '-')
-  document.getElementById('updateTime').textContent = '\u66f4\u65b0 ' + (state.updatedAt ? new Date(state.updatedAt).toLocaleTimeString() : '-')
-}
-
-function renderHeaderEmpty() {
-  document.getElementById('changeId').textContent = ''
-  document.getElementById('baseInfo').textContent = ''
-  document.getElementById('updateTime').textContent = ''
-}
-
-// ─── tab + card rendering ───
-function statusCount(arr, s) { return arr.filter(function(i) { return i.status === s }).length }
-
-function renderTabs(containerId, items, statuses, kind, current, labels) {
-  var el = document.getElementById(containerId)
-  var total = items.length
-  var html = '<button class="tab' + (current === 'all' ? ' active' : '') + '" data-tab="all" data-kind="' + kind + '">\u5168\u90e8 <span class="tab-count">' + total + '</span></button>'
-  for (var si = 0; si < statuses.length; si++) {
-    var s = statuses[si]
-    var c = statusCount(items, s)
-    if (c === 0) continue
-    html += '<button class="tab' + (current === s ? ' active' : '') + '" data-tab="' + s + '" data-kind="' + kind + '">' + (labels[s] || s) + ' <span class="tab-count">' + c + '</span></button>'
-  }
-  el.innerHTML = html
-}
-
-function renderTaskCards(tasks, filter) {
-  var el = document.getElementById('taskList')
-  var filtered = filter === 'all' ? tasks : tasks.filter(function(t) { return t.status === filter })
-  if (!filtered.length) {
-    el.innerHTML = '<div class="empty-state">\u6682\u65e0 ' + (filter === 'all' ? '' : (taskStatusLabels[filter] || filter)) + ' \u7684 Task</div>'
-    if (typeof lucide !== 'undefined') lucide.createIcons()
-    return
-  }
-  var html = ''
-  for (var i = 0; i < filtered.length; i++) {
-    var t = filtered[i]
-    var label = taskStatusLabels[t.status] || t.status
-    var rej = t.status === 'rejected' && t.rejectReason
-    html += '<div class="card"><div class="card-header">'
-      + '<div class="card-hl">'
-      + '<span class="card-id">#' + t.id + '</span>'
-      + '<span class="card-task-title">' + t.title + '</span>'
-      + '</div>'
-      + '<span class="card-sb ' + t.status + '">' + label + '</span>'
-      + '</div>'
-      + '<div class="card-divider"></div>'
-      + '<div class="card-body">'
-      + '<div class="card-row"><span class="card-k">\u7f16\u53f7</span><span class="card-v">' + t.taskNumber + '</span></div>'
-      + '<div class="card-row"><span class="card-k">\u6eaf\u6e90</span><span class="card-v">' + t.specTrace + '</span></div>'
-      + (rej ? '<div class="card-row"><span class="card-k">\u9a73\u56de</span><span class="card-v msg" style="color:var(--red)">' + t.rejectReason + '</span></div>' : '')
-      + '</div></div>'
-  }
-  el.innerHTML = html
-  if (typeof lucide !== 'undefined') lucide.createIcons()
-}
-
-function renderIssueCards(issues, filter) {
-  var el = document.getElementById('issueList')
-  var filtered = filter === 'all' ? issues : issues.filter(function(i) { return i.status === filter })
-  if (!filtered.length) {
-    el.innerHTML = '<div class="empty-state">\u6682\u65e0 ' + (filter === 'all' ? '' : (issueStatusLabels[filter] || filter)) + ' \u7684 Issue</div>'
-    if (typeof lucide !== 'undefined') lucide.createIcons()
-    return
-  }
-  var sevOrder = {Critical:0,High:1,Medium:2,Low:3,Info:4}
-  filtered.sort(function(a,b) { return (sevOrder[a.severity]||5)-(sevOrder[b.severity]||5) })
-  var html = ''
-  for (var i = 0; i < filtered.length; i++) {
-    var issue = filtered[i]
-    var sevCls = issue.severity.toLowerCase()
-    var sevLabel = severityLabels[issue.severity] || issue.severity
-    var dimLabel = dimLabels[issue.dimension] || issue.dimension
-    var statusLabel = issueStatusLabels[issue.status] || issue.status
-    var refix = issue.refixCount > 0 ? '<span class="card-meta-tag refix">\u00d7' + issue.refixCount + '</span>' : ''
-    html += '<div class="card"><div class="card-header">'
-      + '<div class="card-hl">'
-      + '<span class="card-id">#' + issue.id + '</span>'
-      + '<span class="card-sev ' + sevCls + '">' + sevLabel + '</span>'
-      + '<span class="card-dim">' + dimLabel + '</span>'
-      + '<span class="card-file">' + issue.file + ':' + issue.line + '</span>'
-      + '</div>'
-      + '<div class="card-hr">'
-      + '<span class="card-sb ' + issue.status + '">' + statusLabel + '</span>'
-      + refix
-      + '</div>'
-      + '</div>'
-      + '<div class="card-divider"></div>'
-      + '<div class="card-body">'
-      + '<div class="card-row"><span class="card-k">\u63cf\u8ff0</span><span class="card-v msg">' + issue.description + '</span></div>'
-      + (issue.suggestion ? '<div class="card-row"><span class="card-k">\u5efa\u8bae</span><span class="card-v msg">' + issue.suggestion + '</span></div>' : '')
-      + (issue.type ? '<div class="card-row"><span class="card-k">\u7c7b\u578b</span><span class="card-v">' + issue.type + '</span></div>' : '')
-      + (issue.rootCauseGuess ? '<div class="card-row"><span class="card-k">\u6839\u56e0</span><span class="card-v msg">' + issue.rootCauseGuess + '</span></div>' : '')
-      + (issue.status === 'rejected' && issue.rejectReason ? '<div class="card-row"><span class="card-k">\u9a73\u56de</span><span class="card-v msg" style="color:var(--red)">' + issue.rejectReason + '</span></div>' : '')
-      + ((issue.status === 'exemption' || issue.status === 'exempted') && issue.exemptReason ? '<div class="card-row"><span class="card-k">\u8c41\u514d</span><span class="card-v msg" style="color:var(--orange)">' + issue.exemptReason + '</span></div>' : '')
-      + '</div></div>'
-  }
-  el.innerHTML = html
-  if (typeof lucide !== 'undefined') lucide.createIcons()
-}
-
-function renderCards() {
-  if (!state || !state.active || !state.taskGroups.length) {
-    document.getElementById('taskTabs').innerHTML = ''
-    document.getElementById('taskList').innerHTML = ''
-    document.getElementById('issueTabs').innerHTML = ''
-    document.getElementById('issueList').innerHTML = ''
-    return
-  }
-  var tg = state.taskGroups[0]
-  var tasks = tg.tasks || []
-  var issues = tg.issues || []
-  renderTabs('taskTabs', tasks, taskStatusOrder, 'task', taskTab, taskStatusLabels)
-  renderTabs('issueTabs', issues, issueStatusOrder, 'issue', issueTab, issueStatusLabels)
-  renderTaskCards(tasks, taskTab)
-  renderIssueCards(issues, issueTab)
-}
-
-// ─── main render ───
-function renderAll() {
-  if (!state || !state.active) {
-    renderEmpty()
-    document.getElementById('pollDot').style.background = 'var(--text-muted)'
-    document.getElementById('pollLabel').textContent = '\u6ca1\u6709\u6d3b\u8dc3\u4f1a\u8bdd'
-    if (typeof lucide !== 'undefined') lucide.createIcons()
-    return
-  }
-
-  document.getElementById('pollDot').style.background = 'var(--green)'
-  document.getElementById('pollLabel').textContent = '\u8f6e\u8be2 2s'
-
-  var tg = state.taskGroups && state.taskGroups.length > 0 ? state.taskGroups[0] : null
-  if (!tg) {
-    renderEmpty()
-    if (typeof lucide !== 'undefined') lucide.createIcons()
-    return
-  }
-
-  renderHeader(tg)
-  document.getElementById('progressSteps').innerHTML = renderPhase(tg)
-  renderCards()
-  if (typeof lucide !== 'undefined') lucide.createIcons()
-}
-
-// ─── fetch ───
-function fetchState() {
-  fetch('/api/state')
-    .then(function(r) { return r.json() })
-    .then(function(d) {
-      state = d
-      renderAll()
-    })
-    .catch(function() {
-      state = null
-      renderEmpty()
-    })
-}
-
-// ─── event delegation ───
-document.addEventListener('click', function(e) {
-  var tab = e.target.closest('.tab')
-  if (!tab) return
-  var kind = tab.dataset.kind
-  var t = tab.dataset.tab
-  if (kind === 'task') { taskTab = t; renderAll() }
-  else { issueTab = t; renderAll() }
-})
-
-// ─── init ───
-renderAll()
-fetchState()
-setInterval(fetchState, 2000)
+const PHASES=[['task_analysis','需求分析'],['dev_impl','开发实施'],['review','审查'],['completed','完成']];
+const TASK_LABELS={open:'待处理',submitted:'待验证',rejected:'已驳回',verified:'已验证'};
+const ISSUE_LABELS={open:'待处理',submitted:'待验证',rejected:'已驳回',verified:'已验证',exemption_requested:'豁免申请',exempted:'已豁免'};
+const BLOCKER_LABELS={reported:'已上报',awaiting_user:'等待用户',ready_for_architect:'等待架构复核',resolved:'已解决'};
+const DIM_LABELS={style:'风格',architecture:'架构',performance:'性能',security:'安全',maintainability:'可维护'};
+const SEVERITY_LABELS={Critical:'严重',High:'高危',Medium:'中危',Low:'低危',Info:'提示'};
+const SEVERITY_ORDER={Critical:0,High:1,Medium:2,Low:3,Info:4};
+let state=null,selectedGroupId=null;
+function esc(value){return String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));}
+function cls(value){return String(value??'').replace(/[^a-zA-Z0-9_-]/g,'_');}
+function tag(value,label){return '<span class="tag '+cls(value)+'">'+esc(label||value)+'</span>';}
+function currentGroup(){return state?.taskGroups?.find(group=>group.id===selectedGroupId)||state?.taskGroups?.find(group=>group.id===state.currentTaskGroupId)||state?.taskGroups?.[0]||null;}
+function reviewDone(group){return group.reviewCompleted;}
+function phaseState(group,key,index){const current=PHASES.findIndex(phase=>phase[0]===group.status);if(key==='task_analysis')return group.phases.architect_review.completed?'done':current===index?'active':'pending';if(key==='dev_impl')return group.status==='review'||group.status==='completed'?'done':current===index?'active':'pending';if(key==='review')return reviewDone(group)?'done':current===index?'active':'pending';return group.status==='completed'?'done':'pending';}
+function renderGroups(){const list=document.getElementById('groupList');if(!state?.taskGroups?.length){list.innerHTML='';return;}list.innerHTML=state.taskGroups.map(group=>'<button type="button" class="group-button" role="tab" aria-selected="'+(group.id===selectedGroupId)+'" data-group="'+esc(group.id)+'"><span class="group-number">#'+esc(group.id)+'</span><span>'+esc(group.name)+'</span>'+tag(group.lifecycle,group.status)+'</button>').join('');}
+function renderStage(group){return '<section class="stage" aria-label="流程进度">'+PHASES.map(([key,label],index)=>{const status=phaseState(group,key,index);let gates='';if(key==='review'){const review=group.phases.review;const quality=Object.values(review.quality.progress);const qualityStatus=quality.includes('failed')?'failed':quality.every(value=>value==='passed')?'passed':'pending';gates='<div class="gates"><span class="gate '+(review.tool.completed?'passed':'')+'">工具</span><span class="gate '+(review.task.completed?'passed':'')+'">任务</span><span class="gate '+qualityStatus+'">质量</span></div>';}return '<div class="stage-item '+status+'"><span class="stage-name">'+label+'</span><span class="stage-state">'+(status==='done'?'已完成':status==='active'?'进行中':'未开始')+'</span>'+gates+'</div>';}).join('')+'</section>';}
+function renderReviewDetails(group){const review=group.phases.review;const quality=Object.entries(review.quality.progress).map(([dimension,value])=>tag(value,DIM_LABELS[dimension]+' · '+(value==='passed'?'通过':value==='failed'?'失败':'待审'))).join('');return '<section class="review-detail" aria-label="审查阶段明细"><div class="review-lane"><span class="review-kicker">Review Stage 01</span><div class="review-title"><strong>Tool Review</strong>'+tag(review.tool.completed?'passed':'pending',review.tool.completed?'通过':'待审核')+'</div></div><div class="review-lane"><span class="review-kicker">Review Stage 02</span><div class="review-title"><strong>Task Review</strong>'+tag(review.task.completed?'passed':'pending',review.task.completed?'通过':'待审核')+'</div></div><div class="review-lane"><span class="review-kicker">Review Stage 03</span><div class="review-title"><strong>Quality Review</strong></div><div class="quality-verdicts">'+quality+'</div></div></section>';}
+function panel(title,subtitle,count,content){return '<section class="panel"><header class="panel-head"><div><h3>'+title+'</h3><p>'+subtitle+'</p></div><span class="count">'+count+'</span></header>'+content+'</section>';}
+function renderTasks(tasks){return panel('Task','实施任务',tasks.length,tasks.length?tasks.map(task=>'<article class="task"><div class="task-id">#'+esc(task.id)+'<br>'+esc(task.taskNumber)+'</div><div><div class="task-title">'+esc(task.title)+'</div><div class="task-trace">'+esc(task.specTrace||'无 Spec 溯源')+(task.rejectReason?' · 驳回：'+esc(task.rejectReason):'')+'</div><div class="item-meta">'+tag(task.status,TASK_LABELS[task.status])+'</div></div></article>').join(''):'<div class="empty">无 Task</div>');}
+function renderIssues(issues){const sorted=[...issues].sort((left,right)=>(SEVERITY_ORDER[left.severity]??99)-(SEVERITY_ORDER[right.severity]??99));return panel('Issue','审查发现',issues.length,sorted.length?sorted.map(issue=>'<article class="item"><div class="item-top"><div class="item-id">#'+esc(issue.id)+' · '+esc(issue.file)+(issue.line?':'+esc(issue.line):'')+'</div>'+tag(issue.status,ISSUE_LABELS[issue.status])+'</div><div class="item-title">'+esc(issue.description)+'</div><div class="item-meta">'+tag(String(issue.severity).toLowerCase(),SEVERITY_LABELS[issue.severity]||issue.severity)+tag(issue.dimension,DIM_LABELS[issue.dimension]||issue.dimension)+tag(issue.sourcePhase,issue.sourcePhase)+'</div></article>').join(''):'<div class="empty">无 Issue</div>');}
+function renderBlockers(blockers){return panel('Blocker','待外部处理',blockers.length,blockers.length?blockers.map(item=>'<article class="item"><div class="item-top"><div class="item-id">#'+esc(item.id)+(item.taskId?' · TASK #'+esc(item.taskId):'')+'</div>'+tag(item.status,BLOCKER_LABELS[item.status])+'</div><div class="item-title">'+esc(item.description)+'</div><div class="item-note">'+esc(item.evidence)+'</div></article>').join(''):'<div class="empty">无待处理 Blocker</div>');}
+function render(group){const tasks=group.tasks||[],issues=group.issues||[],blockers=group.blockers||[];const verified=tasks.filter(task=>task.status==='verified').length;const unresolved=issues.filter(issue=>!['verified','exempted'].includes(issue.status)).length;const waiting=blockers.filter(item=>item.status==='awaiting_user').length;document.getElementById('changeId').textContent=state.changeId;document.getElementById('baseBranch').textContent=state.baseBranch||'-';document.getElementById('updatedAt').textContent=state.updatedAt?new Date(state.updatedAt).toLocaleTimeString():'-';document.getElementById('dashboard').innerHTML='<section class="focus"><div><div class="eyebrow">当前任务组 #'+esc(group.id)+' · '+esc(group.lifecycle)+'</div><h2>'+esc(group.name)+'</h2><p class="branch">'+esc(group.branchName||'尚未设置隔离分支')+'</p></div><div class="metrics"><div class="metric"><span class="metric-value">'+verified+'/'+tasks.length+'</span><span class="metric-label">Task 已验证</span></div><div class="metric"><span class="metric-value">'+unresolved+'</span><span class="metric-label">待处理 Issue</span></div><div class="metric"><span class="metric-value">'+waiting+'</span><span class="metric-label">等待用户</span></div></div></section>'+renderStage(group)+renderReviewDetails(group)+'<section class="board">'+renderTasks(tasks)+renderIssues(issues)+renderBlockers(blockers)+'</section>';}
+function renderAll(){renderGroups();const group=currentGroup();if(!state?.active||!group){document.getElementById('dashboard').innerHTML='<div class="empty">暂无活跃编排会话</div>';return;}render(group);}
+async function fetchState(){try{const response=await fetch('/api/state',{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);state=await response.json();if(!selectedGroupId||!state.taskGroups?.some(group=>group.id===selectedGroupId))selectedGroupId=state.currentTaskGroupId;document.getElementById('connectionLabel').textContent='实时同步';document.getElementById('liveDot').style.background='var(--green)';renderAll();}catch{state=null;document.getElementById('connectionLabel').textContent='连接失败';document.getElementById('liveDot').style.background='var(--red)';document.getElementById('dashboard').innerHTML='<div class="empty error">无法读取编排状态。2 秒后重试。</div>';}}
+document.addEventListener('click',event=>{const group=event.target.closest('[data-group]');if(group){selectedGroupId=group.dataset.group;renderAll();}});
+fetchState();setInterval(fetchState,2000);
 </script>
 </body>
 </html>

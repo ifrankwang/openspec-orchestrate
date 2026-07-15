@@ -33,7 +33,8 @@ describe("OpenspecOrchestratePlugin", () => {
     expect(names).toContain("opx_quality_review_submit")
     expect(names).toContain("opx_orch_resolve_review")
     expect(names).toContain("opx_skill")
-    expect(names.length).toBe(11)
+    expect(names).toContain("opx_orch_resume_blocker")
+    expect(names.length).toBe(12)
     for (const n of names) {
       expect(typeof hooks.tool![n].execute).toBe("function")
     }

@@ -88,6 +88,7 @@ export function isReviewCompleted(tg: TaskGroupState): boolean {
     && tg.phases.review.task.completed
     && REVIEW_DIMENSIONS.every(d => tg.phases.review.quality.progress[d] === "passed")
     && !hasBlockingIssues(tg.issues)
+    && !tg.blockers.some((blocker) => blocker.status !== "resolved")
 }
 
 export function computeRequiredDims(tg: TaskGroupState): ReviewDimension[] {
@@ -109,8 +110,9 @@ export function assertAgent(context: { agent: string }, toolName: string, allowe
 }
 
 export function deriveCurrentAgents(tg: TaskGroupState): string[] {
+  if (tg.blockers.some((blocker) => blocker.status === "awaiting_user")) return []
   if (tg.status === "task_analysis") return ["openspec-architect"]
-  if (tg.status === "dev_impl") return ["openspec-developer"]
+  if (tg.status === "dev_impl") return tg.worktreePath && tg.baseRef ? ["openspec-developer"] : []
   if (tg.status === "review") {
     if (!tg.phases.review.tool.completed) return ["openspec-reviewer-tool"]
     if (!tg.phases.review.task.completed) return ["openspec-reviewer-task"]

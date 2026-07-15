@@ -64,3 +64,13 @@ export const taskVerifyResult = tool.schema.object({
   task_id: tool.schema.string().min(1).describe("子任务 ID"),
   reason: tool.schema.string().min(1).describe("失败理由"),
 })
+
+export const blockerItem = tool.schema.object({
+  source_role: tool.schema.string().min(1),
+  task_id: tool.schema.string().min(1).optional(),
+  category: tool.schema.string().min(1),
+  description: tool.schema.string().min(1),
+  evidence: tool.schema.string().min(1),
+  attempted_actions: tool.schema.string().min(1),
+  options: tool.schema.array(tool.schema.string().min(1)).optional(),
+})

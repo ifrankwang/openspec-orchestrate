@@ -18,10 +18,10 @@ import {
 
 export const init = tool({
   description:
-    "初始化编排会话。传入变更 ID 和任务组 ID，工具自动解析 tasks.md 提取全部任务组并解析目标组子任务。可通过 recovery 参数恢复到指定阶段。同 changeId 可重复调用，仅重建目标组，其余组原样保留。",
+    "初始化编排会话。传入变更 ID 和任务组 ID，工具自动解析 tasks.md 提取全部任务组并解析目标组子任务。可通过 recovery 参数恢复到指定阶段。无 recovery 重复初始化当前任务组时保留其阶段和进度；切换到其它任务组时初始化该组。",
   args: {
     change_id: tool.schema.string().min(1).describe("OpenSpec 变更 ID"),
-    task_group_id: tool.schema.string().min(1).describe("要初始化的任务组 ID。仅此组被重建（in_progress），其余组原样保留。"),
+    task_group_id: tool.schema.string().min(1).describe("要初始化的任务组 ID。无 recovery 重复调用当前组时保留进度；切换任务组时仅初始化目标组。"),
     base_branch: tool.schema.string().optional().describe("基准分支名（如 main、develop），用于计算 merge-base 和 worktree fork 源。未传则自动从当前 git 分支推导。"),
     recovery: tool.schema.object({
       phase: tool.schema.enum(PHASE_ORDER).describe("恢复到哪个阶段"),
@@ -99,6 +99,7 @@ export const init = tool({
 
     let state = await readStateByChangeId(context.worktree, args.change_id)
     const baseBranch = args.base_branch || await getCurrentBranch(context.worktree)
+    const currentTaskGroupId = state?.taskGroupId
     if (state) {
       state.baseBranch = state.baseBranch || baseBranch
       const existingMap = new Map(state.taskGroups.map((g) => [g.id, g]))
@@ -117,13 +118,20 @@ export const init = tool({
             relevantSpecs: [], lastFilesChanged: [],
             phases: createEmptyPhases(),
             tasks: [],
-            issues: [],
+            issues: [], blockers: [],
           }
         }
 
-        const defaultPhase = args.recovery ? args.recovery.phase : "task_analysis"
+        if (existing && !args.recovery && currentTaskGroupId === p.id) {
+          return { ...existing, name: p.name, taskCount: p.taskCount }
+        }
+
+        const recoveryPhase = existing?.blockers.some((blocker) => blocker.status !== "resolved")
+          ? "task_analysis"
+          : args.recovery?.phase
+        const defaultPhase = recoveryPhase ?? "task_analysis"
         const phases = args.recovery
-          ? buildPhases(args.recovery.phase as BuildPhaseTarget, args.recovery?.review_layer).phases
+          ? buildPhases(recoveryPhase as BuildPhaseTarget, args.recovery?.review_layer).phases
           : buildPhases("task_analysis").phases
 
         const preserveProgress = args.recovery?.preserve_progress !== false
@@ -170,15 +178,7 @@ export const init = tool({
           phases,
           tasks: tgTasks,
           issues: tgIssues,
-        }
-
-        if (existing && !args.recovery) {
-          if (existing.phases.architect_review.completed) {
-            base.phases.architect_review = { completed: true }
-          }
-          base.worktreePath = existing.worktreePath
-          base.branchName = existing.branchName
-          base.baseRef = existing.baseRef
+          blockers: existing?.blockers ?? [],
         }
 
         return base
@@ -206,7 +206,7 @@ export const init = tool({
             tasks: isCurrent
               ? newTasks.map((t) => ({ ...t, status: taskInjectionStatus }))
               : [],
-            issues: [],
+            issues: [], blockers: [],
           }
         }),
         createdAt: new Date().toISOString(),
@@ -253,21 +253,15 @@ export const init = tool({
     const recoveryMsg = args.recovery
       ? `已恢复到 ${args.recovery.phase} 阶段。worktree=${args.recovery.branch_name}，baseRef=${ctg.baseRef?.slice(0, 7)}。`
       : ""
-    const defaultPhase = args.recovery ? args.recovery.phase : "task_analysis"
-    let nextStep = ""
-    if (defaultPhase === "task_analysis" && ctg.phases.architect_review.completed) {
-      nextStep = "架构师复核已通过。请调用 opx_orch_set_worktree 设置 worktree 后分派 openspec-developer。"
-    } else if (defaultPhase === "task_analysis") nextStep = "请分派 openspec-architect 子代理。"
-    else if (defaultPhase === "dev_impl" || defaultPhase === "review") nextStep = "请先调用 opx_orch_set_worktree 确保 worktree 就绪，再分派子代理。"
     return JSON.stringify(
       {
         status: "initialized",
         change_id: state.changeId,
         task_group_count: state.taskGroups.length,
         current_task_group: targetGroup,
-        active_phase: defaultPhase,
+        active_phase: ctg.status,
         task_count: newTasks.length,
-        message: `编排会话已初始化。${recoveryMsg}${nextStep}`,
+        message: `编排会话已初始化。${recoveryMsg}`,
       },
       null,
       2
@@ -277,7 +271,7 @@ export const init = tool({
 
 export const set_worktree = tool({
   description:
-    "确保目标组的 git worktree 就绪。若已存在则复用，否则按规范自动创建（分支 task-group/{id}，路径 .worktree/task-group-{id}）。进入开发阶段时自动按最终 tasks.md 刷新当前组任务列表；恢复场景仅补齐 worktree、不改阶段。",
+    "确保目标组的 git worktree 就绪。若已存在则复用，否则按规范自动创建（分支 task-group/{id}，路径 .worktree/task-group-{id}）。只补齐资源，不改变阶段。",
   args: {
     worktree_path: tool.schema.string().optional().describe("git worktree 的绝对路径（可选，不传则按规范自动生成）"),
     branch_name: tool.schema.string().optional().describe("worktree 对应的分支名（可选，不传则按规范 task-group/{id}）"),
@@ -330,39 +324,11 @@ export const set_worktree = tool({
       tg.baseRef = baseRef
     }
 
-    if (tg.status === "task_analysis") {
-      const isTasksEmpty = tg.tasks.length === 0
-      const allOpen = tg.tasks.every((t) => t.status === "open")
-      if (!isTasksEmpty && !allOpen) {
-        throw new Error(
-          `进入开发阶段时当前组 task 列表异常（非空且非全部 open），无法安全刷新。` +
-          `请检查 state 文件 ${state.changeId} 是否与 tasks.md 一致。`
-        )
-      }
-      if (isTasksEmpty || allOpen) {
-        const parsedTasks = await parseTasksMdForGroup(context.worktree, state.changeId, state.taskGroupId)
-        const newRelevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
-        tg.tasks = parsedTasks.map((p, i) => ({
-          id: String(i + 1),
-          specTrace: p.specTrace,
-          title: p.title,
-          status: "open" as TaskStatus,
-          taskNumber: p.taskNumber,
-          rejectReason: null,
-        }))
-        tg.relevantSpecs = newRelevantSpecs
-      }
-      tg.status = "dev_impl"
-    }
-
     await writeState(context.worktree, state)
 
     const msg = reused
       ? `复用已有 worktree：${existingPath}（分支 ${branch}）。baseRef=${tg.baseRef?.slice(0, 7)}。`
       : `已创建 worktree：${wtPath}（分支 ${branch}）。baseRef=${tg.baseRef?.slice(0, 7)}。`
-    const next = tg.status === "dev_impl"
-      ? "请分派 openspec-developer 子代理。"
-      : `当前阶段为 ${tg.status}，请按对应流程推进。`
     return JSON.stringify(
       {
         status: "ok",
@@ -370,7 +336,7 @@ export const set_worktree = tool({
         worktree_path: tg.worktreePath,
         branch_name: branch,
         base_ref: tg.baseRef,
-        message: msg + next,
+        message: msg,
       },
       null,
       2
@@ -378,9 +344,31 @@ export const set_worktree = tool({
   },
 })
 
+export const resume_blocker = tool({
+  description: "编排者记录用户对 blocker 的原话，交架构师复核。",
+  args: {
+    blocker_id: tool.schema.string().min(1),
+    user_response: tool.schema.string().min(1),
+  },
+  async execute(args, context) {
+    assertOrchestrator(context, "opx_orch_resume_blocker")
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    const blocker = tg.blockers.find((item) => item.id === args.blocker_id)
+    if (!blocker) throw new Error(`blocker #${args.blocker_id} 不在任务组 ${tg.id} 中。`)
+    if (blocker.status !== "awaiting_user") throw new Error(`blocker #${args.blocker_id} 当前不是 awaiting_user，不能恢复。`)
+    blocker.userResponse = args.user_response
+    blocker.status = "ready_for_architect"
+    tg.status = "task_analysis"
+    await writeState(context.worktree, state)
+    return JSON.stringify({ status: "ok", blocker_id: blocker.id, blocker_status: blocker.status, message: "用户答复已记录。" })
+  },
+})
+
 export const status = tool({
   description:
-    "统一只读状态/上下文查询。按调用者角色路由：orchestrator→统计+worktree；architect→spec/task/issue；developer→worktree/boundary/task/issue；reviewer-tool→tool 层控件 issue；reviewer-task→task 验证状态；quality reviewer→自维度存量 issue。",
+    "统一只读状态/上下文查询。按调用者角色路由：orchestrator→统计+worktree；architect→spec/task/issue/blocker；developer→worktree/boundary/task/issue；reviewer-tool→tool 层控件 issue；reviewer-task→task 验证状态；quality reviewer→自维度存量 issue。",
   args: {},
   async execute(_args, context) {
     const state = await readStateByWorktree(context.worktree)
@@ -438,11 +426,16 @@ export const status = tool({
 
     if (agent !== ORCHESTRATOR_AGENT) {
       const submitTool = AGENT_TO_SUBMIT_TOOL[agent] || "对应 submit 工具"
+      const submitConvention = agent === "openspec-architect"
+        ? "按结果提交 `outcome=ready` 或 `outcome=awaiting_user`。"
+        : agent === "openspec-developer"
+          ? "按结果提交 `outcome=completed` 或 `outcome=blocked`。"
+          : "即使无 issue / 无待处理项，也必须提交 `passed=true`。"
       const instructionBlock = [
         "# ✅ 当前轮到你执行",
         "",
         `完成本职工作后**必须**调用 \`${submitTool}()\` 提交。`,
-        "即使无 issue / 无待处理项，也必须提交 passed=true。",
+        submitConvention,
         "",
         "---",
         "",
@@ -483,6 +476,10 @@ export const complete_task_group = tool({
     )
     if (openTasks.length > 0) {
       throw new Error(`存在 ${openTasks.length} 个未完成 task。`)
+    }
+    const unresolvedBlockers = tg.blockers.filter((blocker) => blocker.status !== "resolved")
+    if (unresolvedBlockers.length > 0) {
+      throw new Error(`存在 ${unresolvedBlockers.length} 个未解决 blocker，无法完成任务组。`)
     }
     const mergeTarget = state.baseBranch
     if (tg.branchName) {

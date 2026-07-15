@@ -9,6 +9,7 @@ import {
   set_worktree,
   status,
   complete_task_group,
+  resume_blocker,
   arch_submit,
   dev_submit,
   tool_review_submit,
@@ -31,6 +32,7 @@ export const OpenspecOrchestratePlugin: Plugin = async (input) => {
     tool: {
       opx_orch_init: init,
       opx_orch_set_worktree: set_worktree,
+      opx_orch_resume_blocker: resume_blocker,
       opx_status: status,
       opx_orch_complete_task_group: complete_task_group,
       opx_arch_submit: arch_submit,

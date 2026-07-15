@@ -41,21 +41,28 @@ export async function readStateByWorktree(worktree: string): Promise<Orchestrate
 
 export async function readStateByChangeId(worktree: string, changeId: string): Promise<OrchestrateState | null> {
   const fp = getStatePath(worktree, changeId)
+  let state: OrchestrateState
   try {
     const f = Bun.file(fp)
-    if (await f.exists()) {
-      const state = (await f.json()) as OrchestrateState
-      const sampleGroup = state.taskGroups?.[0]
-      if (sampleGroup && !('tasks' in sampleGroup)) {
-        throw new Error(
-          `状态文件 "${state.changeId}" 是旧版本格式，不兼容当前版本。请重新初始化编排会话（opx_orch_init）。`
-        )
-      }
-      return state
-    }
+    if (!await f.exists()) return null
+    state = (await f.json()) as OrchestrateState
   } catch {
+    return null
   }
-  return null
+  const sampleGroup = state.taskGroups?.[0]
+  if (sampleGroup && !('tasks' in sampleGroup)) {
+    throw new Error(
+      `状态文件 "${state.changeId}" 是旧版本格式，不兼容当前版本。请重新初始化编排会话（opx_orch_init）。`
+    )
+  }
+  for (const group of state.taskGroups || []) {
+    group.blockers ??= []
+    // 已完成架构复核的旧状态曾停留在 task_analysis；归一到开发阶段。
+    if (group.status === "task_analysis" && group.phases?.architect_review?.completed && !group.blockers.some((blocker) => blocker.status !== "resolved")) {
+      group.status = "dev_impl"
+    }
+  }
+  return state
 }
 
 export async function writeState(worktree: string, state: OrchestrateState): Promise<void> {

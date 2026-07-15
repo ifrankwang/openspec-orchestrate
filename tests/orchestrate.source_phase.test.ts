@@ -65,7 +65,7 @@ async function setupToReview(root: string, wt: string, fakeGit: FakeGitRunner) {
 
   await init.execute({ change_id: CID, task_group_id: "1" }, o)
   await arch_submit.execute({
-    passed: true, issues: [],
+    outcome: "ready", issues: [],
     execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }
   }, a)
   await set_worktree.execute({}, o)

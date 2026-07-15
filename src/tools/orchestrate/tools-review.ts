@@ -1,10 +1,10 @@
 import { tool } from "@opencode-ai/plugin"
 import path from "path"
-import type { TaskGroupState, IssueItem, Dimension, ReviewDimension, OrchestrateState } from "./types.js"
+import type { TaskGroupState, IssueItem, Dimension, ReviewDimension, OrchestrateState, BlockerItem } from "./types.js"
 import { REVIEW_DIMENSIONS } from "./types.js"
 import { DIMENSION_AGENT_MAP, MAX_RETRIES, BLOCKING_SEVERITIES, ORCHESTRATOR_AGENT, SEVERITY_LEVELS } from "./constants.js"
 import {
-  architectIssue, executionBoundarySchema, boundaryExpansionSchema, reviewIssue,
+  architectIssue, executionBoundarySchema, boundaryExpansionSchema, reviewIssue, blockerItem,
   requestExemptItem, rejectedIssueItem, toolIssueItem, taskVerifyItem, taskVerifyResult,
 } from "./schemas.js"
 import {
@@ -15,14 +15,34 @@ import {
 import { applyReviewGate, deduplicateAndAddIssues, mergeExecutionBoundary, finalizeQualityPhase } from "./review.js"
 import { readStateByWorktree, writeState } from "./state.js"
 import { runGit, runGitChecked, getCurrentBranch, getMergeBase, getDiffFileList, isWorktreeClean, markTaskGroupCheckboxesComplete } from "./git.js"
+import { parseTasksMdForGroup, extractRelevantSpecsFromTasks } from "./tasks-md.js"
+
+function addBlockers(tg: TaskGroupState, blockers: Array<Omit<BlockerItem, "id" | "status" | "userResponse" | "architectConclusion">>, status: BlockerItem["status"]): void {
+  let nextId = tg.blockers.reduce((max, blocker) => Math.max(max, Number(blocker.id.replace(/^b/, "")) || 0), 0) + 1
+  for (const blocker of blockers) {
+    tg.blockers.push({ ...blocker, id: `b${nextId++}`, status, userResponse: null, architectConclusion: null })
+  }
+}
+
+function resetForBlocker(tg: TaskGroupState): void {
+  tg.phases.architect_review.completed = false
+  tg.phases.review.tool.completed = false
+  tg.phases.review.task.completed = false
+  for (const dimension of REVIEW_DIMENSIONS) tg.phases.review.quality.progress[dimension] = "pending"
+  for (const task of tg.tasks) {
+    task.status = "open"
+    task.rejectReason = null
+  }
+}
 
 export const arch_submit = tool({
   description:
-    "架构师提交复核报告。必须 passed=true；execution_boundary 必填。issues 记录已修复项。",
+    "架构师提交预检结果。outcome=ready 时提交执行边界；outcome=awaiting_user 时提交 blocker。",
   args: {
-    passed: tool.schema.boolean().describe("复核是否通过（恒为 true；传 false 会被拦截报错）"),
-    issues: tool.schema.array(architectIssue).describe("已修复问题记录（含经 question 确认后补充的项）"),
-    execution_boundary: executionBoundarySchema.optional().describe("developer 执行边界（passed=true 时必须提供）"),
+    outcome: tool.schema.enum(["ready", "awaiting_user"]),
+    issues: tool.schema.array(architectIssue).optional(),
+    blockers: tool.schema.array(blockerItem).optional(),
+    execution_boundary: executionBoundarySchema.optional(),
   },
   async execute(args, context) {
     assertAgent(context, "opx_arch_submit", ["openspec-architect"])
@@ -32,16 +52,40 @@ export const arch_submit = tool({
     if (tg.status !== "task_analysis") {
       throw new Error(`阶段顺序错误：task_analysis 当前不在活跃阶段，当前阶段为 "${tg.status}"。`)
     }
-    if (!args.passed) {
-      throw new Error(
-        "架构师不得提交 passed=false。需用户拍板的信息缺口，请在当前会话内用 question 工具逐条与用户确认后，自行编辑对应 md 修复，再以 passed=true 提交。"
-      )
+    if (Object.hasOwn(args, "passed")) {
+      throw new Error("opx_arch_submit 不接受 passed 参数；必须提供 outcome=ready 或 awaiting_user。")
     }
-    if (!args.execution_boundary) {
-      throw new Error("passed=true 时必须提供 execution_boundary。")
+    const outcome = args.outcome
+    const blockers = (args.blockers || []) as any[]
+    if (outcome === "awaiting_user") {
+      if (blockers.length === 0) throw new Error("outcome=awaiting_user 时必须提供至少一个 blocker。")
+      addBlockers(tg, blockers.map((blocker) => ({
+        sourceRole: blocker.source_role, taskId: blocker.task_id || null, category: blocker.category,
+        description: blocker.description, evidence: blocker.evidence, attemptedActions: blocker.attempted_actions,
+        options: blocker.options || [],
+      })), "awaiting_user")
+      await writeState(context.worktree, state)
+      return JSON.stringify({ status: "blocked", outcome, blocker_count: blockers.length, message: "架构预检暂停，职责已完成，请立即结束当前会话。" })
+    }
+    if (!args.execution_boundary) throw new Error("outcome=ready 时必须提供 execution_boundary。")
+    if (tg.blockers.some((blocker) => blocker.status === "awaiting_user")) {
+      throw new Error("仍有 awaiting_user blocker，无法提交 outcome=ready。")
     }
     tg.executionBoundary = args.execution_boundary
+    for (const blocker of tg.blockers) {
+      if (blocker.status === "reported" || blocker.status === "ready_for_architect") {
+        blocker.status = "resolved"
+        blocker.architectConclusion = "架构预检已处理。"
+      }
+    }
+    const parsedTasks = await parseTasksMdForGroup(context.worktree, state.changeId, state.taskGroupId)
+    tg.tasks = parsedTasks.map((task, index) => ({ id: String(index + 1), specTrace: task.specTrace, title: task.title, status: "open", taskNumber: task.taskNumber, rejectReason: null }))
+    tg.relevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
     tg.phases.architect_review.completed = true
+    tg.phases.review.tool.completed = false
+    tg.phases.review.task.completed = false
+    for (const dimension of REVIEW_DIMENSIONS) tg.phases.review.quality.progress[dimension] = "pending"
+    tg.status = "dev_impl"
     const changeDir = `openspec/changes/${state.changeId}`
     const statusResult = await runGitChecked(context.worktree, ["status", "--porcelain", changeDir])
     if (!statusResult.success) {
@@ -63,7 +107,7 @@ export const arch_submit = tool({
     return JSON.stringify(
       {
         status: "ok",
-        phase: "architect_review=completed",
+        phase: "dev_impl",
         execution_boundary: args.execution_boundary,
         message: "复核通过，职责已完成，请立即结束当前会话。",
       },
@@ -75,8 +119,10 @@ export const arch_submit = tool({
 
 export const dev_submit = tool({
   description:
-    "developer 提交实现结果。标记 task 为 submitted，或标记 issue 为 submitted（已修复）/ exemption（申请豁免）。",
+    "developer 提交实现结果。outcome=completed 提交实现；outcome=blocked 上报 blocker。",
   args: {
+    outcome: tool.schema.enum(["completed", "blocked"]).optional(),
+    blocker: blockerItem.optional(),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("确认修复的 issue ID 列表"),
     request_exempts: tool.schema.array(requestExemptItem).optional().describe("不可修的 issue 申请豁免"),
   },
@@ -94,6 +140,20 @@ export const dev_submit = tool({
     const clean = await isWorktreeClean(tg.worktreePath)
     if (!clean) {
       throw new Error(`worktree "${tg.worktreePath}" 存在未 commit 内容，请先 commit 再 submit。`)
+    }
+    const outcome = args.outcome || "completed"
+    if (outcome === "blocked") {
+      if (!args.blocker) throw new Error("outcome=blocked 时必须提供 blocker。")
+      const blocker = args.blocker as any
+      addBlockers(tg, [{
+        sourceRole: blocker.source_role, taskId: blocker.task_id || null, category: blocker.category,
+        description: blocker.description, evidence: blocker.evidence, attemptedActions: blocker.attempted_actions,
+        options: blocker.options || [],
+      }], "reported")
+      resetForBlocker(tg)
+      tg.status = "task_analysis"
+      await writeState(context.worktree, state)
+      return JSON.stringify({ status: "blocked", outcome, message: "已记录 blocker，职责已完成，请立即结束当前会话。" })
     }
     tg.lastFilesChanged = await getDiffFileList(tg.worktreePath, tg.baseRef)
 
@@ -176,7 +236,7 @@ export const dev_submit = tool({
     await writeState(context.worktree, state)
     return JSON.stringify(
       {
-        status: "ok",
+        status: "ok", outcome,
         active_phase: tg.status,
         required_dimensions: requiredDims,
         message: "提交完成。职责已完成，请立即结束当前会话。",

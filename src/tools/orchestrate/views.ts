@@ -75,6 +75,19 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
   const reviewStatus = isReviewCompleted(tg) ? "✓" : (tg.status === "review" ? `● ${reviewLayer}` : "✗")
   lines.push(`| review | ${reviewStatus} |`)
   lines.push("")
+  lines.push("## Blocker", "")
+  if (tg.blockers.length === 0) {
+    lines.push("- (无)")
+  } else {
+    for (const blocker of tg.blockers) {
+      lines.push(`- Blocker #${blocker.id} | ${blocker.status} | ${blocker.category}`)
+      lines.push(`  - 来源：${blocker.sourceRole}${blocker.taskId ? `；Task #${blocker.taskId}` : ""}`)
+      lines.push(`  - 描述：${blocker.description}`)
+      if (blocker.userResponse) lines.push(`  - 用户答复：${blocker.userResponse}`)
+      if (blocker.architectConclusion) lines.push(`  - 架构结论：${blocker.architectConclusion}`)
+    }
+  }
+  lines.push("")
   lines.push("## Task 摘要", "")
   lines.push(`| 状态 | 数量 |`)
   lines.push(`|------|------|`)
@@ -136,10 +149,6 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
     checks.push(`- ⚠️ 阶段逆序：status=${tg.status} 但 review 已完成`)
     checks.push(`  建议：\`opx_orch_init({ recovery: { phase: "review", ... } })\``)
   }
-  if ((tg.status === "dev_impl" || tg.status === "review") && !tg.worktreePath) {
-    checks.push(`- ⚠️ 缺 worktree：status=${tg.status} 但 worktreePath=null`)
-    checks.push(`  建议：先调 opx_orch_set_worktree 创建 worktree，或 \`opx_orch_init({ recovery: { phase: "${tg.status}", worktree_path: "<path>", branch_name: "task-group/${tg.id}" } })\``)
-  }
   if ((tg.status === "dev_impl" || tg.status === "review") && !tg.executionBoundary) {
     checks.push(`- ⚠️ 缺 executionBoundary：status=${tg.status} 但 executionBoundary=null`)
     checks.push(`  建议：\`opx_orch_init({ recovery: { phase: "task_analysis", ... } })\``)
@@ -199,8 +208,10 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
         lines.push("（无待分派项，请检查状态）")
       }
     }
-  } else if (tg.status === "task_analysis" && tg.phases.architect_review.completed) {
-    lines.push("架构师复核已通过。请调用 `opx_orch_set_worktree` 设置 worktree 后分派 `openspec-developer`。")
+  } else if (tg.blockers.some((blocker) => blocker.status === "awaiting_user")) {
+    lines.push("等待用户答复 blocker。")
+  } else if (tg.status === "dev_impl" && (!tg.worktreePath || !tg.baseRef)) {
+    lines.push("资源未就绪：调用 `opx_orch_set_worktree`。")
   } else {
     const agents = deriveCurrentAgents(tg)
     if (agents.length > 0) {
@@ -244,6 +255,23 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
   const open = tg.tasks.filter((t) => t.status === "open")
   if (open.length === 0) lines.push("- (无)")
   else for (const t of open) lines.push(renderTaskItem(t))
+  lines.push("")
+  lines.push("## Blocker (待架构复核)", "")
+  const unresolvedBlockers = tg.blockers.filter((blocker) => blocker.status !== "resolved")
+  if (unresolvedBlockers.length === 0) {
+    lines.push("- (无)")
+  } else {
+    for (const blocker of unresolvedBlockers) {
+      lines.push(`- Blocker #${blocker.id} | ${blocker.status} | ${blocker.category}`)
+      lines.push(`  - 来源：${blocker.sourceRole}${blocker.taskId ? `；Task #${blocker.taskId}` : ""}`)
+      lines.push(`  - 描述：${blocker.description}`)
+      lines.push(`  - 证据：${blocker.evidence}`)
+      lines.push(`  - 已尝试：${blocker.attemptedActions}`)
+      if (blocker.options.length > 0) lines.push(`  - 可选方案：${blocker.options.join("；")}`)
+      if (blocker.userResponse) lines.push(`  - 用户答复：${blocker.userResponse}`)
+      if (blocker.architectConclusion) lines.push(`  - 架构结论：${blocker.architectConclusion}`)
+    }
+  }
   lines.push("")
   lines.push("## Issue (申请豁免中)", "")
   const exemption = tg.issues.filter((i) => i.status === "exemption_requested")

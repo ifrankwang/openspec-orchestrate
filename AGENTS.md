@@ -54,6 +54,16 @@ tests/                    — Bun test，100% fake-git（无真实 git 依赖）
 
 每次子代理返回后，编排者调 `opx_status` 取权威 next-step 指令并遵循。`opx_status` 列出多个子代理时并排分派（单条消息中同时发送），不串行等待。当前阶段/层应分派谁由阶段门禁（`deriveCurrentAgents`）输出，编排者不自行推断流转顺序。
 
+### Blocker 与资源
+
+TaskGroupState 持久化 `blockers[]`。blocker 生命周期为 `reported`、`awaiting_user`、`ready_for_architect`、`resolved`，记录 ID、来源角色、关联 task、分类、描述、证据、已尝试动作、可选方案、用户答复、架构结论。
+
+developer 仅能自主处理局部、可逆且不改变需求、验收、外部契约、安全合规、数据语义的事项。外部依赖、凭证、真实输入，以及 stub、降级、跳过验收等情形必须上报 blocker。生产路径禁止用 stub、fake、空实现、硬编码成功替代验收。
+
+`opx_dev_submit` 使用 `outcome=completed|blocked`。blocked 提交前 worktree 必须 clean，task 不得提前 submitted。blocker 回退后保留 worktree、issues、retryCount、lastResolvedRetryCount，重开 task 并重置 review 各层。`opx_arch_submit` 使用 `outcome=ready|awaiting_user`；仅全部 blocker resolved 后进入开发。`opx_orch_resume_blocker` 仅编排者可调，接收 blocker ID 与用户原话。
+
+`opx_orch_set_worktree` 仅保证 worktree/baseRef，不改变 phase。arch ready 刷新 tasks.md 并进入 `dev_impl`。`opx_status` 为 architect 渲染未 resolved blocker 的复核信息；在开发资源缺失时仅指引编排者准备资源，资源齐备后才分派 developer。
+
 ## 治理原则
 
 ### 编排流转单一事实源

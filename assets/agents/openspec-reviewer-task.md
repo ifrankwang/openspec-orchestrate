@@ -95,7 +95,7 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
    docker compose -f docker-compose-dev.yaml down
    ```
 
-7. **如果项目无 docker-compose 或无健康端点**：跳过对应步骤，在报告中注明。
+7. 缺少验证所需真实资源、输入或凭证时，调用 `opx_task_review_submit(passed=false, issues=...)` 提交阻塞事实；不得以 stub、降级或跳过验收判定通过。
 
 ### 第三步：测试审查
 

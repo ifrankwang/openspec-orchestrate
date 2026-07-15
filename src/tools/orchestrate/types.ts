@@ -45,6 +45,22 @@ export interface IssueItem {
   rejectReason: string | null
 }
 
+export type BlockerStatus = "reported" | "awaiting_user" | "ready_for_architect" | "resolved"
+
+export interface BlockerItem {
+  id: string
+  sourceRole: string
+  taskId: string | null
+  category: string
+  description: string
+  evidence: string
+  attemptedActions: string
+  options: string[]
+  status: BlockerStatus
+  userResponse: string | null
+  architectConclusion: string | null
+}
+
 export interface ReviewLayerData {
   completed: boolean
   testResults?: string
@@ -81,6 +97,7 @@ export interface TaskGroupState {
   phases: Phases
   tasks: TaskItem[]
   issues: IssueItem[]
+  blockers: BlockerItem[]
 }
 
 export interface OrchestrateState {

@@ -73,12 +73,13 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
     - **Issue（待修复）**：open 或 rejected 状态的问题，优先修复
     - **Issue（豁免裁定中）**：exemption 状态，等待对应维度 reviewer 裁定，本轮跳过不修
     - 已 verified / 已 exempted 的 issue 不展示，无需关注
-2. 修复完成后 **先 commit**，再调 `opx_dev_submit(fixed_issue_ids=...)`
+2. 修复完成后先 commit，再调 `opx_dev_submit(outcome="completed", fixed_issue_ids=...)`
 3. 对不可修的 issue 调用 `opx_dev_submit(request_exempts=[...])` 申请豁免，交对应维度 reviewer 裁定
 4. 修复范围自动覆盖被标记文件：reviewer 报 issue 时，工具已把 issue 指向文件的目录并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停
    reviewer 通过 `boundary_expansion` 声明的扩展范围同样已并入执行边界
 5. 工具改进 issue（`suggestion` 含 `[tool_eligible]`）的 `file` 已指向规则/配置文件，其目录已由工具并入执行边界。按 `suggestion` 中草案直接改该配置文件即可，不越界、无需暂停
 6. 修复可按 issue 中的 `suggestion` 直接执行（reviewer 已在 issue 中写好了具体修复）
+7. 遇到外部依赖、凭证、真实输入，或必须 stub、降级、跳过验收才能继续时，提交 `opx_dev_submit(outcome="blocked", blocker=...)`。`blocker` 含 `source_role`、`task_id`、`category`、`description`、`evidence`、`attempted_actions`、`options`。
 
 ## 代码规范
 
@@ -115,10 +116,11 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 
 ## 最终提交（opx_dev_submit）
 
-完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit`。工具会自动处理 Task 提交和 Issue 修复，出错时按工具错误消息处理。
+完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit(outcome="completed")`。生产路径禁止用 stub、fake、空实现或硬编码成功替代验收。
 
 ```json
 {
+  "outcome": "completed",
   "fixed_issue_ids": ["15", "22"],
   "request_exempts": [
     { "issue_id": "18", "reason": "本任务组范围内为已知技术债，需引入反向索引架构" }
@@ -128,7 +130,7 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 
 ## 工具调用边界
 
-仅可调用：`opx_status`（只读）、`opx_dev_submit`（提交）。完成本职工作后**必须**调用 `opx_dev_submit` 提交。即使无 issue / 无待处理项，也必须提交 passed=true。
+仅可调用：`opx_status`、`opx_dev_submit`。完成本职工作后必须调用 `opx_dev_submit` 提交。
 
 禁止调用任何 `opx_orch_*`、`opx_arch_*`、`opx_reviewer_*` 工具——这些是编排者 / 架构师 / 审核人专属。
 

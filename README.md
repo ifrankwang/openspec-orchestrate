@@ -45,7 +45,7 @@ bun add @opencode-ai/openspec-orchestrate
 
 ### 编排看板
 
-插件加载时自动在 `http://127.0.0.1:4519` 启动编排进度看板。展示当前活跃 task group 的执行进度、Review 门禁状态、Task/Issue 明细。只读、2s 轮询刷新。端口被占用时自动递增探测。
+插件加载时自动在 `http://127.0.0.1:4519` 启动编排进度看板。展示当前活跃 task group 的执行进度、Review 门禁状态、Task/Issue/Blocker 明细；Review 完成要求不存在未解决阻塞 Issue 与 Blocker。只读、2s 轮询刷新。端口被占用时自动递增探测。
 
 ## 命令
 

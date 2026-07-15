@@ -1,30 +1,31 @@
 # openspec-orchestrate
 
-OpenCode 编排插件，实现 OpenSpec 四阶段工作流 + Review 三层门禁。
+OpenCode 编排插件。提供 OpenSpec 任务组编排、阻塞升级、隔离开发与三层 Review 门禁。
 
 ## 架构
 
-```
-架构师 (Architect) ──→ 开发 (Developer) ──→ Review 三层门禁 (Tool → Task → Quality)
-```
+`Architect → Developer → Tool Review → Task Review → Quality Review → 收尾`
 
 编排者（orchestrator）只负责分派子代理，不自已写代码、审查或测试。
 
-### 四阶段状态机
+### 整体流程
 
 每个 task group 按序执行：
 
 `task_analysis → dev_impl → review → completed`
 
-### Review 三层门禁
+| 阶段 | 目标 |
+|------|------|
+| task_analysis | 校验需求、设计、任务与实施前提 |
+| dev_impl | 实施任务、验证改动 |
+| review | 执行工具、任务与质量门禁 |
+| completed | 合并任务组分支并清理资源 |
 
-| 阶段 | 角色 | 职责 |
-|------|------|------|
-| Phase 3 tool review | openspec-reviewer-tool | 确定性工具检查（Spotless/PMD/ArchUnit/SonarQube/UT 编译），跨维提交 |
-| Phase 3 task review | openspec-reviewer-task | task 产出验证 + 服务启动 + 接口测试 + 测试审查 |
-| Phase 3 quality review | openspec-reviewer-style / architecture / performance / security / maintainability | 5 维 AI 语义审查（并行） |
+编排者只分派子代理，不编写代码、不审查、不测试。每次子代理返回后，编排者调用 `opx_status`；该工具是下一步调度的唯一事实源。
 
-每层独立 3 轮重试，tool→task→quality 严格顺序。任一层不通过立即回 dev_impl。超限后由用户决策（continue / giveup）。
+Review 依次执行 tool、task、quality 三层门禁；失败回开发修复。不可自主决策的需求、依赖或验收阻塞会暂停流程，待用户确认后由架构师复核并恢复。
+
+具体阶段流转、工具参数、状态与门禁规则以 `src/tools/orchestrate/` 实现为准。README 不重复这些细节，避免文档与代码漂移。
 
 ## 快速开始
 
@@ -38,8 +39,9 @@ bun add @opencode-ai/openspec-orchestrate
 ### 使用
 
 1. 在 OpenCode 配置中注册插件
-2. 编排者发起 `opx_orch_init` 初始化流程
-3. 四阶段自动化执行：task_analysis → dev_impl → review（三层门禁）→ completed
+2. 编排者调用 `opx_orch_init` 初始化任务组
+3. 根据 `opx_status` 提示分派角色或准备 worktree
+4. 完成 task_analysis、dev_impl、review 与收尾
 
 ### 编排看板
 
@@ -55,24 +57,23 @@ bun add @opencode-ai/openspec-orchestrate
 ## 项目结构
 
 ```
-src/
-  index.ts              — 插件入口（注册 11 个 opx_* 工具 + opx_skill + 启动看板）
-  tools/orchestrate.ts  — 全部编排逻辑（含 readDashboardState 只读投影）
-  dashboard/            — 编排进度看板服务（server.ts + page.ts）
-  agents/loader.ts      — 注入 agent 配置
-  skills/tool.ts        — 加载内置 skill
-  skills/loader.ts      — 注入 skill
-assets/
-  agents/               — 10 个 agent MD 定义（含 tool/task/quality review）
-  skills/               — 内置 skill 定义
-  dashboard/index.html  — 看板前端页面
-tests/                  — Bun test，100% fake-git 无外部依赖
+src/index.ts                  — 插件入口与工具注册
+src/tools/orchestrate.ts      — 编排工具导出
+src/tools/orchestrate/        — 状态、门禁、视图、生命周期与 Review 逻辑
+src/dashboard/                — 编排进度看板服务
+src/agents/                   — agent 配置注入
+src/skills/                   — 内置 skill 加载与注入
+assets/agents/                — agent 定义
+assets/skills/                — 内置 skill 定义
+assets/dashboard/             — 看板页面
+tests/                        — Bun 测试，使用 FakeGitRunner
 ```
 
 ## 核心特性
 
 - **编排进度看板**：插件加载时启动 HTTP 看板服务，实时展示阶段进度、Review 门禁状态、Task/Issue 明细（2s 轮询、只读）
 - **状态持久化**：按 changeId 拆分状态文件，current.json 指针追踪活跃变更
+- **阻塞升级**：不可自主决策的问题持久化、暂停、用户恢复、架构复核
 - **Worktree 隔离**：`git worktree` 分支隔离，自动合并清理
 - **执行边界**：架构师限定 developer 的目录和包范围，reviewer 新报 issue 自动扩展
 - **豁免机制**：issue → developer 申请豁免 → 对应维度 reviewer 通过 `exempt_issue_ids` 裁定

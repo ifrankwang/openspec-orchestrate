@@ -4,7 +4,7 @@ import type { TaskGroupState, IssueItem, Dimension, ReviewDimension, Orchestrate
 import { REVIEW_DIMENSIONS } from "./types.js"
 import { DIMENSION_AGENT_MAP, MAX_RETRIES, BLOCKING_SEVERITIES, ORCHESTRATOR_AGENT, SEVERITY_LEVELS } from "./constants.js"
 import {
-  architectIssue, executionBoundarySchema, boundaryExpansionSchema, reviewIssue, blockerItem,
+  executionBoundarySchema, boundaryExpansionSchema, reviewIssue, blockerItem,
   requestExemptItem, rejectedIssueItem, toolIssueItem, taskVerifyItem, taskVerifyResult,
 } from "./schemas.js"
 import {
@@ -40,7 +40,6 @@ export const arch_submit = tool({
     "架构师提交预检结果。outcome=ready 时提交执行边界；outcome=awaiting_user 时提交 blocker。",
   args: {
     outcome: tool.schema.enum(["ready", "awaiting_user"]),
-    issues: tool.schema.array(architectIssue).optional(),
     blockers: tool.schema.array(blockerItem).optional(),
     execution_boundary: executionBoundarySchema.optional(),
   },
@@ -101,6 +100,20 @@ export const arch_submit = tool({
       ])
       if (!commitResult.success) {
         throw new Error(`git commit openspec docs 失败：${commitResult.stderr}`)
+      }
+    }
+    const skillsDir = ".agents/skills/"
+    const skillsStatus = await runGitChecked(context.worktree, ["status", "--porcelain", skillsDir])
+    if (skillsStatus.success && skillsStatus.stdout) {
+      const addSkills = await runGitChecked(context.worktree, ["add", skillsDir])
+      if (!addSkills.success) {
+        throw new Error(`git add .agents/skills/ 失败：${addSkills.stderr}`)
+      }
+      const commitSkills = await runGitChecked(context.worktree, [
+        "commit", "-m", "docs(skill): persist architecture standards",
+      ])
+      if (!commitSkills.success) {
+        throw new Error(`git commit .agents/skills/ 失败：${commitSkills.stderr}`)
       }
     }
     await writeState(context.worktree, state)
@@ -534,6 +547,7 @@ export const quality_review_submit = tool({
     exempt_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("豁免裁定的 issue ID 列表"),
     rejected_issue_ids: tool.schema.array(rejectedIssueItem).optional().describe("驳回的 issue 列表（含原因）"),
     boundary_expansion: boundaryExpansionSchema.optional().describe("执行边界扩展（仅 passed=false 时有效）"),
+    skills: tool.schema.array(tool.schema.string()).optional().describe("本维度产出/补充的必须加载 skill 路径"),
   },
   async execute(args, context) {
     const agentToDim = Object.fromEntries(
@@ -609,7 +623,27 @@ export const quality_review_submit = tool({
     }
 
     tg.phases.review.quality.progress[dimension] = passed ? "passed" : "failed"
+    if (args.skills && tg.executionBoundary) {
+      if (!tg.executionBoundary.skills) tg.executionBoundary.skills = []
+      for (const skill of args.skills) {
+        if (!tg.executionBoundary.skills.includes(skill)) tg.executionBoundary.skills.push(skill)
+      }
+    }
     await writeState(context.worktree, state)
+    const skillsDir = ".agents/skills/"
+    const skillsStatus = await runGitChecked(context.worktree, ["status", "--porcelain", skillsDir])
+    if (skillsStatus.success && skillsStatus.stdout) {
+      const addSkills = await runGitChecked(context.worktree, ["add", skillsDir])
+      if (!addSkills.success) {
+        throw new Error(`git add .agents/skills/ 失败：${addSkills.stderr}`)
+      }
+      const commitSkills = await runGitChecked(context.worktree, [
+        "commit", "-m", `docs(skill): persist architecture standards by ${context.agent}`,
+      ])
+      if (!commitSkills.success) {
+        throw new Error(`git commit .agents/skills/ 失败：${commitSkills.stderr}`)
+      }
+    }
     const resultStr = await finalizeQualityPhase(state, tg, dimension, passed, context)
     if (dedupedCount > 0) {
       const result = JSON.parse(resultStr)

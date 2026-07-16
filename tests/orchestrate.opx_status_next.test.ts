@@ -44,7 +44,7 @@ async function setupThroughQualityReady(
   ctx: { orch: Ctx; arch: Ctx; dev: Ctx; toolReviewer: Ctx; taskReviewer: Ctx }
 ): Promise<void> {
   await init.execute({ change_id: CID, task_group_id: "1" }, ctx.orch)
-  await arch_submit.execute({ outcome: "ready", issues: [],
+  await arch_submit.execute({ outcome: "ready",
     execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, ctx.arch)
   await set_worktree.execute({}, ctx.orch)
   const s1 = readStateSync(wt, CID)
@@ -77,7 +77,7 @@ describe("S1: arch_submit passed", () => {
     const a = makeCtx("openspec-architect", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
 
     const output = await status.execute({}, o)
@@ -103,7 +103,7 @@ describe("S2: dev_submit 后", () => {
     const d = makeCtx("openspec-developer", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -134,7 +134,7 @@ describe("S3: tool review passed", () => {
     const toolR = makeCtx("openspec-reviewer-tool", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -167,7 +167,7 @@ describe("S4: task review passed", () => {
     const taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -237,7 +237,7 @@ describe("S6: tool review failed (non-checkpoint)", () => {
     const toolR = makeCtx("openspec-reviewer-tool", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -270,7 +270,7 @@ describe("S7: task review failed (non-checkpoint)", () => {
     const taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -339,7 +339,7 @@ describe("S9: checkpoint (3 tool failures)", () => {
 
     // 1. init → arch → set_worktree → dev_submit
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -389,7 +389,7 @@ describe("S10: resolve_review(continue) 后正常推进", () => {
 
     // 1. init → arch → set_worktree → dev_submit
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)

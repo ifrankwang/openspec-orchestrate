@@ -89,7 +89,8 @@ permission:
       "src/test/java/cn/com/ey/fso/loanreview/infrastructure/excel"
     ],
     "allowed_packages": ["cn.com.ey.fso.loanreview.infrastructure.excel"],
-    "notes": "<实施建议：关键坑位、组件复用、边缘场景、框架应用（如 MapStruct）；不含目录/包路径，无则留空>"
+    "notes": "<实施建议：关键坑位、组件复用、边缘场景、框架应用（如 MapStruct）；不含目录/包路径，无则留空>",
+    "skills": []
   }
 }
 ```

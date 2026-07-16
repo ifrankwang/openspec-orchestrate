@@ -29,6 +29,8 @@ permission:
 3. **加载 skill**：通过 Skill tool 加载，遵循其中的编码规范、架构规则、构建命令、框架特定用法等
 4. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在提交报告中标注"未加载技术栈 skill"
 
+优先处理 opx_status 返回的 executionBoundary.skills 中的 skill 路径：若该路径对应的 skill 已注册则用 skill tool 加载，否则 read 读取文件内容；再按 available_skills 的 description 自匹配兜底。
+
 ## 必读文档派生规则
 
 changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：

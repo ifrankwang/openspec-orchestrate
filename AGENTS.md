@@ -78,6 +78,10 @@ agent 只按"能力类别"发起查找：读 available_skills，靠 skill 的 de
 
 依赖方向单向为技术栈 skill → agent：反向映射由 skill 的 description/frontmatter 声明（面向哪些 agent、哪个 Phase 生效）。禁止 agent → 具体 skill 的引用。
 
+### 工具产出不得硬编码技术栈
+
+opx_status 视图等工具产出的上下文文本不得硬编码技术栈名称、构建命令、框架约定、技术栈工具（如 Maven/PMD/ArchUnit）或具体技术栈 skill 名。工具产出与 agent.md 内容准则一致，只用"能力类别"语言提示分流优先级与职责；具体技术栈实现方式由 agent 加载的技术栈 skill 指导。
+
 ## 测试
 
 ```bash

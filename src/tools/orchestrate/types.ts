@@ -18,6 +18,7 @@ export interface ExecutionBoundary {
   allowed_directories: string[]
   allowed_packages: string[]
   notes: string
+  skills?: string[]
 }
 
 export interface TaskItem {

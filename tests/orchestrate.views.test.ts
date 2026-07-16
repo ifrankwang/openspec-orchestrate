@@ -74,6 +74,8 @@ describe("视图「操作指引」段", () => {
     expect(output).toContain("## 操作指引")
     expect(output).toContain("交叉比对")
     expect(output).toContain("opx_arch_submit")
+    expect(output).toContain("识别本 change 涉及应标准化的共性能力")
+    expect(output).toContain("将本 change 必须加载的 skill 路径填入")
   })
 
   test("renderDeveloperView 含操作指引", () => {
@@ -90,6 +92,22 @@ describe("视图「操作指引」段", () => {
     expect(output).toContain("## 操作指引")
     expect(output).toContain("opx_dev_submit")
     expect(output).toContain("Task (待完成)")
+  })
+
+  test("renderDeveloperView 含 skills 显示", () => {
+    const state = mockState()
+    const tg = baseTg({
+      status: "dev_impl",
+      worktreePath: "/wt",
+      branchName: "tg-1",
+      baseRef: "base",
+      executionBoundary: { allowed_directories: ["src"], allowed_packages: ["com"], notes: "", skills: [".agents/skills/my-skill/SKILL.md"] },
+      tasks: [mockTask("1")],
+    })
+    const output = renderDeveloperView(state, tg)
+    expect(output).toContain("需加载 skill")
+    expect(output).toContain(".agents/skills/my-skill/SKILL.md")
+    expect(output).toContain("加载 executionBoundary.skills 中的 skill")
   })
 
   test("renderToolReviewView 含操作指引", () => {
@@ -137,6 +155,8 @@ describe("视图「操作指引」段", () => {
     expect(output).toContain("## 操作指引")
     expect(output).toContain("opx_quality_review_submit")
     expect(output).toContain("按本维度审查标准")
+    expect(output).toContain("识别 dev 重复实现应抽取为标准的能力")
+    expect(output).toContain("产出 skill 路径传 quality_review_submit 的 skills 参数")
   })
 })
 

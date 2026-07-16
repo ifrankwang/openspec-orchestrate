@@ -61,7 +61,7 @@ async function setupToReview(wt: string, fakeGit: FakeGitRunner) {
        toolR = makeCtx("openspec-reviewer-tool", wt),
        taskR = makeCtx("openspec-reviewer-task", wt)
   await init.execute({ change_id: CID, task_group_id: "1" }, o)
-  await arch_submit.execute({ outcome: "ready", issues: [],
+  await arch_submit.execute({ outcome: "ready",
     execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
   await set_worktree.execute({}, o)
   fakeGit.diffs.set(wt, ["src/T.java"])
@@ -117,7 +117,7 @@ describe("G2. 身份守卫", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -155,7 +155,7 @@ describe("G3. 重复提交守卫", () => {
          s = makeCtx("openspec-reviewer-style", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -254,7 +254,7 @@ describe("G5. 非法 task id 守卫", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -292,7 +292,7 @@ describe("G6. task_review_submit 完整性门禁", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -330,7 +330,7 @@ describe("G7. 非法 task id in failed_task_ids", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -367,7 +367,7 @@ describe("G8. tool 层完成守卫", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -504,7 +504,7 @@ describe("G11. quality_review_submit 参数验证", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -537,7 +537,7 @@ describe("G12. task 层完成守卫", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -571,7 +571,7 @@ describe("G13. tool 层重复提交守卫", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -606,7 +606,7 @@ describe("G14. task 层重复提交守卫", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -642,7 +642,7 @@ describe("G15. 豁免完整性门禁", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -706,7 +706,7 @@ describe("G16. 层失败回退 dev_impl", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -747,7 +747,7 @@ describe("G16. 层失败回退 dev_impl", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -797,7 +797,7 @@ describe("G17. rejectReason 存储", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -839,7 +839,7 @@ describe("G19. task_review_submit 同步 tasks.md 复选框", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -887,7 +887,7 @@ describe("G19. task_review_submit 同步 tasks.md 复选框", () => {
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -932,7 +932,7 @@ describe("G18. tool_review_submit test_results 参数", () => {
          toolR = makeCtx("openspec-reviewer-tool", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -972,7 +972,7 @@ describe("G20. passed=false 守卫放宽 + B2 task.completed 不 auto-set", () =
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -1007,7 +1007,7 @@ describe("G20. passed=false 守卫放宽 + B2 task.completed 不 auto-set", () =
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -1042,7 +1042,7 @@ describe("G20. passed=false 守卫放宽 + B2 task.completed 不 auto-set", () =
          taskR = makeCtx("openspec-reviewer-task", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready", issues: [],
+    await arch_submit.execute({ outcome: "ready",
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     fakeGit.diffs.set(wt, ["src/T.java"])
@@ -1074,6 +1074,79 @@ describe("G20. passed=false 守卫放宽 + B2 task.completed 不 auto-set", () =
     const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
     expect(tg2.phases.review.task.completed).toBe(false)
 
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
+// ── G21: arch_submit dead arg 回归 + skills 字段 ──
+
+describe("G21. arch_submit dead arg + skills", () => {
+  test("arch_submit 传 issues 参数 → 静默忽略（dead arg 清理后不报错但也不处理）", async () => {
+    const root = `/tmp/guard-g21-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    const result = await arch_submit.execute({ outcome: "ready", issues: [],
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" } } as any, a)
+    const parsed = typeof result === "string" ? JSON.parse(result) : JSON.parse(result.output)
+    expect(parsed.status).toBe("ok")
+    expect(parsed.phase).toBe("dev_impl")
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("arch_submit 传 execution_boundary.skills → state 正确存储", async () => {
+    const root = `/tmp/guard-g21-skills-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ outcome: "ready",
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "", skills: [".agents/skills/my-skill/SKILL.md"] } }, a)
+    const state = readStateSync(wt, CID)
+    const tg: any = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.executionBoundary.skills).toEqual([".agents/skills/my-skill/SKILL.md"])
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
+// ── G22: quality_review_submit skills merge ──
+
+describe("G22. quality_review_submit skills merge", () => {
+  test("传入 skills 追加去重到 executionBoundary.skills", async () => {
+    const root = `/tmp/guard-g22-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+    const sCtx = makeCtx("openspec-reviewer-style", wt)
+
+    await setupToReview(wt, fakeGit)
+
+    await quality_review_submit.execute({ passed: true, issues: [],
+      skills: [".agents/skills/skill-a/SKILL.md"] }, sCtx)
+
+    let state = readStateSync(wt, CID)
+    let tg: any = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.executionBoundary.skills).toContain(".agents/skills/skill-a/SKILL.md")
+
+    const aCtx = makeCtx("openspec-reviewer-architecture", wt)
+    await quality_review_submit.execute({ passed: true, issues: [],
+      skills: [".agents/skills/skill-b/SKILL.md", ".agents/skills/skill-a/SKILL.md"] }, aCtx)
+
+    state = readStateSync(wt, CID)
+    tg = state.taskGroups.find((g: any) => g.id === "1")
+    expect(tg.executionBoundary.skills).toEqual([
+      ".agents/skills/skill-a/SKILL.md",
+      ".agents/skills/skill-b/SKILL.md",
+    ])
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
 })

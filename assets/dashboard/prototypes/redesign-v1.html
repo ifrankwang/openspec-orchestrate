@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>编排进度看板 · 重设计 v1</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+:root{
+  --bg:#f8fafc;--surface:#fff;--surface-2:#f1f5f9;
+  --ink:#0f172a;--muted:#475569;--quiet:#94a3b8;
+  --line:#e2e8f0;--line-2:#cbd5e1;
+  --blue:#2563eb;--blue-soft:#eff6ff;
+  --green:#16a34a;--green-soft:#f0fdf4;
+  --amber:#d97706;--amber-soft:#fffbeb;
+  --red:#dc2626;--red-soft:#fef2f2;
+  --violet:#7c3aed;--violet-soft:#f5f3ff;
+  --teal:#0d9488;--teal-soft:#f0fdfa;
+  --radius:14px;--radius-sm:8px;--pill:999px;
+  --shadow:0 1px 2px rgba(15,23,42,.04),0 6px 16px rgba(15,23,42,.04);
+  --sans:'Inter',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}html{font-size:15px}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+button{font:inherit}button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.icon{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center}
+.shell{max-width:1280px;margin:0 auto;padding:32px 28px 80px}
+/* header */
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding-bottom:26px;border-bottom:1px solid var(--line)}
+.brand{display:flex;flex-direction:column;gap:8px}
+.badge{display:inline-flex;align-items:center;gap:8px;font:600 .68rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px var(--green-soft)}
+h1{margin:0;font-size:1.6rem;font-weight:700;letter-spacing:-.03em}
+.meta{display:flex;gap:28px;text-align:right;font-size:.8rem;color:var(--muted)}
+.meta span{display:flex;flex-direction:column;gap:5px}.meta strong{color:var(--ink);font-weight:600;font-size:.86rem}
+/* group tabs */
+.group-strip{display:flex;gap:8px;overflow-x:auto;padding:20px 2px 24px}
+.group-tab{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border:1px solid var(--line);border-radius:var(--pill);background:var(--surface);color:var(--muted);font-size:.84rem;cursor:pointer;transition:.15s}
+.group-tab:hover{border-color:var(--line-2);color:var(--ink)}
+.group-tab[aria-selected="true"]{border-color:transparent;background:var(--ink);color:#fff;box-shadow:var(--shadow)}
+.group-tab .num{font-family:var(--mono);font-size:.72rem;opacity:.7}
+/* step progress */
+.stepper{display:flex;align-items:flex-start;position:relative;padding:22px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:22px}
+.stepper-line{position:absolute;top:40px;left:60px;right:60px;height:3px;background:var(--line);border-radius:var(--pill);z-index:0}
+.step{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;z-index:1;text-align:center}
+.step-dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:600 .8rem var(--mono);background:#fff;border:2px solid var(--line);color:var(--muted)}
+.step.done .step-dot{background:var(--green);border-color:var(--green);color:#fff}
+.step.active .step-dot{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 0 0 4px var(--blue-soft)}
+.step-label{font-weight:600;font-size:.85rem}.step-desc{font-size:.75rem;color:var(--muted);max-width:120px}
+/* review gates */
+.review-section{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;margin-bottom:22px}
+.review-title{margin:0 0 6px;font-size:1rem;font-weight:700}.review-sub{margin:0 0 18px;font-size:.82rem;color:var(--muted)}
+.gate-list{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.gate-card{display:flex;align-items:flex-start;gap:14px;padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-2)}
+.gate-card.passed{border-color:var(--green);background:var(--green-soft)}
+.gate-card.failed{border-color:var(--red);background:var(--red-soft)}
+.gate-card.pending{border-color:var(--amber);background:var(--amber-soft)}
+.gate-icon{width:36px;height:36px;border-radius:var(--radius-sm);background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+.gate-name{font-weight:600;font-size:.92rem;margin-bottom:2px}.gate-desc{font-size:.76rem;color:var(--muted);line-height:1.4}
+.gate-status{font-size:.74rem;font-weight:600;margin-top:8px;display:inline-block;padding:3px 8px;border-radius:var(--pill)}
+.gate-card.passed .gate-status{color:var(--green)}.gate-card.failed .gate-status{color:var(--red)}.gate-card.pending .gate-status{color:var(--amber)}
+.legend{display:flex;gap:16px;font-size:.75rem;color:var(--muted);margin-top:18px;flex-wrap:wrap}
+.legend b{font-weight:600;color:var(--ink)}
+/* panels */
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.panel-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid var(--line)}
+.panel-head h3{margin:0;font-size:1rem;font-weight:700}.panel-head p{margin:4px 0 0;font-size:.78rem;color:var(--muted)}
+.count{font:600 .78rem/1 var(--mono);padding:4px 10px;background:var(--surface-2);border-radius:var(--pill);color:var(--muted)}
+/* filters */
+.filters{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--surface-2);flex-wrap:wrap}
+.filters select,.filters input{padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:.8rem;background:#fff;color:var(--ink)}
+.filters input{min-width:140px}
+/* list items */
+.panel-body{max-height:520px;overflow:auto;padding:0 20px}
+.empty{padding:28px 0;text-align:center;color:var(--quiet);font-size:.85rem}
+.item{padding:14px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:6px}
+.item-id{font:.72rem/1.5 var(--mono);color:var(--quiet)}
+.item-title{font-size:.92rem;font-weight:500;line-height:1.45}
+.item-desc{font-size:.82rem;color:var(--muted);margin-top:6px;line-height:1.5}
+.item-desc.collapsed{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item-desc-toggle{margin-top:6px;font-size:.75rem;color:var(--blue);cursor:pointer;background:none;border:none;padding:0}
+.item-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+/* badges: status vs dimension vs severity */
+.badge-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:var(--pill);font:500 .72rem/1.4 var(--mono)}
+.badge-status.open,.badge-status.submitted,.badge-status.awaiting_user,.badge-status.ready_for_architect,.badge-status.pending{background:var(--blue-soft);color:var(--blue)}
+.badge-status.completed,.badge-status.verified,.badge-status.resolved,.badge-status.passed{background:var(--green-soft);color:var(--green)}
+.badge-status.rejected,.badge-status.failed,.badge-status.critical{background:var(--red-soft);color:var(--red)}
+.badge-status.exemption_requested,.badge-status.exempted,.badge-status.medium{background:var(--amber-soft);color:var(--amber)}
+.badge-status.low,.badge-status.info{background:var(--violet-soft);color:var(--violet)}
+.badge-dimension{background:#fff;border:1px solid var(--line);color:var(--muted)}
+.badge-severity{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:var(--radius-sm);font:600 .72rem/1.4 var(--mono);border-left:3px solid transparent}
+.badge-severity.critical{background:var(--red-soft);color:var(--red);border-color:var(--red)}
+.badge-severity.high{background:var(--amber-soft);color:var(--amber);border-color:var(--amber)}
+.badge-severity.medium{background:var(--violet-soft);color:var(--violet);border-color:var(--violet)}
+.badge-severity.low,.badge-severity.info{background:var(--surface-2);color:var(--muted);border-color:var(--line-2)}
+/* responsive */
+@media(max-width:1024px){.board{grid-template-columns:1fr}.gate-list{grid-template-columns:1fr}}
+@media(max-width:640px){.topbar{flex-direction:column;gap:14px}.meta{text-align:left}.stepper{overflow-x:auto}.stepper-line{display:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="badge" id="connBadge"><span>实时同步</span></div>
+      <h1>编排进度看板</h1>
+    </div>
+    <div class="meta">
+      <span>变更编号<strong id="changeId">-</strong></span>
+      <span>基准分支<strong id="baseBranch">-</strong></span>
+      <span>最后更新<strong id="updatedAt">-</strong></span>
+    </div>
+  </header>
+  <nav class="group-strip" id="groupList"></nav>
+  <main id="dashboard"></main>
+</div>
+<script>
+const PHASES=[['task_analysis','需求分析','确认需求与方案'],['dev_impl','开发实施','按任务开发实现'],['review','审查','工具/任务/质量三层审查'],['completed','完成','所有阶段已通过']];
+const TASK_LABELS={open:'待处理',submitted:'待验证',rejected:'已驳回',verified:'已验证'};
+const ISSUE_LABELS={open:'待处理',submitted:'待验证',rejected:'已驳回',verified:'已验证',exemption_requested:'豁免申请',exempted:'已豁免'};
+const BLOCKER_LABELS={reported:'已上报',awaiting_user:'等待用户',ready_for_architect:'等待架构复核',resolved:'已解决'};
+const DIM_LABELS={style:'风格',architecture:'架构',performance:'性能',security:'安全',maintainability:'可维护'};
+const SEVERITY_LABELS={Critical:'严重',High:'高危',Medium:'中危',Low:'低危',Info:'提示'};
+const SEVERITY_ORDER={Critical:0,High:1,Medium:2,Low:3,Info:4};
+const mockState={
+  active:true,changeId:'proto-001',baseBranch:'main',updatedAt:new Date().toISOString(),
+  taskGroups:[
+    {id:'tg-1',name:'用户登录',status:'dev_impl',lifecycle:'in_progress',reviewCompleted:false,branchName:'task-group/user-login',
+     phases:{architect_review:{completed:true},review:{tool:{completed:false},task:{completed:false},quality:{progress:{style:'pending',architecture:'passed',performance:'pending',security:'failed',maintainability:'passed'}}}},
+     tasks:[
+       {id:'1',title:'登录接口',taskNumber:'1.1',specTrace:'spec.md',status:'open',rejectReason:null},
+       {id:'2',title:'单元测试',taskNumber:'1.2',specTrace:'spec.md',status:'verified',rejectReason:null},
+     ],
+     issues:[
+       {id:'10',dimension:'security',severity:'Critical',file:'Auth.java',line:12,description:'SQL 注入风险，需改用参数化查询。当前代码直接将用户输入拼接到 SQL 语句中，存在严重的安全漏洞，必须在入库前进行转义或使用预编译语句。',status:'open',sourcePhase:'quality'},
+       {id:'11',dimension:'style',severity:'Info',file:'Config.java',line:3,description:'命名风格不一致',status:'verified',sourcePhase:'tool'},
+       {id:'12',dimension:'performance',severity:'High',file:'Login.java',line:45,description:'循环内重复查询数据库，建议批量处理或加缓存。',status:'submitted',sourcePhase:'task'},
+     ],
+     blockers:[{id:'b1',taskId:'1',description:'依赖服务不可用',evidence:'HTTP 503，上游认证服务返回 Service Unavailable',status:'awaiting_user'}]
+    },
+    {id:'tg-2',name:'订单支付',status:'completed',lifecycle:'completed',reviewCompleted:true,branchName:'task-group/order-pay',
+     phases:{architect_review:{completed:true},review:{tool:{completed:true},task:{completed:true},quality:{progress:{style:'passed',architecture:'passed',performance:'passed',security:'passed',maintainability:'passed'}}}},
+     tasks:[{id:'3',title:'支付流程',taskNumber:'2.1',specTrace:'spec.md',status:'verified',rejectReason:null}],
+     issues:[],blockers:[]
+    }
+  ]
+};
+let selectedGroupId=mockState.taskGroups[0].id;
+const filters={status:'all',dimension:'all',severity:'all',keyword:''};
+function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\'':'&#39;','"':'&quot;'}[c]))}
+function cls(v){return String(v??'').replace(/[^a-zA-Z0-9_-]/g,'_')}
+function badge(type,value,label){return `<span class="badge-${type} ${cls(value)}">${esc(label||value)}</span>`}
+function currentGroup(){return mockState.taskGroups.find(g=>g.id===selectedGroupId)||mockState.taskGroups[0]}
+function phaseState(group,key,index){const current=PHASES.findIndex(p=>p[0]===group.status);if(key==='task_analysis')return group.phases.architect_review.completed?'done':current===index?'active':'pending';if(key==='dev_impl')return group.status==='review'||group.status==='completed'?'done':current===index?'active':'pending';if(key==='review')return group.reviewCompleted?'done':current===index?'active':'pending';return group.status==='completed'?'done':'pending'}
+function renderGroups(){const el=document.getElementById('groupList');el.innerHTML=mockState.taskGroups.map(g=>`<button class="group-tab" data-gid="${esc(g.id)}" aria-selected="${g.id===selectedGroupId}"><span class="num">#${esc(g.id)}</span><span>${esc(g.name)}</span>${badge('status',g.lifecycle,g.status)}</button>`).join('')}
+function renderStepper(group){return `<section class="stepper" aria-label="流程进度"><div class="stepper-line"></div>${PHASES.map(([k,l,d],i)=>{const s=phaseState(group,k,i);return `<div class="step ${s}"><div class="step-dot">${s==='done'?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>':i+1}</div><div><div class="step-label">${l}</div><div class="step-desc">${d}</div></div></div>`}).join('')}</section>`}
+function renderReview(group){const r=group.phases.review;const qp=r.quality.progress;const qs=Object.values(qp).includes('failed')?'failed':Object.values(qp).every(v=>v==='passed')?'passed':'pending';const gates=[
+  {key:'tool',title:'Tool Review',desc:'自动化工具审查代码规范与基本质量',done:r.tool.completed,status:r.tool.completed?'passed':'pending'},
+  {key:'task',title:'Task Review',desc:'人工核对任务完成度和规格符合性',done:r.task.completed,status:r.task.completed?'passed':'pending'},
+  {key:'quality',title:'Quality Review',desc:'5 个质量维度逐项审查',done:qs==='passed',status:qs}
+];const qualityTags=Object.entries(qp).map(([d,v])=>badge('status',v,DIM_LABELS[d])).join('');return `<section class="review-section"><h2 class="review-title">审查阶段</h2><p class="review-sub">三层门禁全部通过后才可进入完成态。当前质量维度状态：${qualityTags}</p><div class="gate-list">${gates.map(g=>`<div class="gate-card ${g.status}"><div class="gate-icon">${g.status==='passed'?'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>':g.status==='failed'?'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 6l12 12M6 18L18 6"/></svg>':'●'}</div><div><div class="gate-name">${g.title}</div><div class="gate-desc">${g.desc}</div><span class="gate-status">${g.status==='passed'?'已通过':g.status==='failed'?'未通过':'待审核'}</span></div></div>`).join('')}</div><div class="legend"><b>图例：</b><span>● 填充色块 = 状态</span><span>□ 描边 pill = 维度</span><span>▌ 左侧色条 = 严重度</span></div></section>`}
+function filterControls(kind){return `<div class="filters"><select data-filter="status"><option value="all">全部状态</option>${Object.entries(kind==='issue'?ISSUE_LABELS:kind==='blocker'?BLOCKER_LABELS:TASK_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>${kind==='issue'?`<select data-filter="dimension"><option value="all">全部维度</option>${Object.entries(DIM_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><select data-filter="severity"><option value="all">全部严重度</option>${Object.entries(SEVERITY_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>`:''}<input type="text" data-filter="keyword" placeholder="搜索关键词…"></div>`}
+function panel(title,subtitle,count,controls,content){return `<section class="panel"><header class="panel-head"><div><h3>${title}</h3><p>${subtitle}</p></div><span class="count">${count}</span></header>${controls}<div class="panel-body">${content}</div></section>`}
+function longText(text){if(!text||text.length<60)return esc(text);return `<div class="item-desc collapsed" data-long>${esc(text)}</div><button class="item-desc-toggle">展开</button>`}
+function bindExpands(){document.querySelectorAll('.item-desc-toggle').forEach(btn=>btn.addEventListener('click',e=>{const d=e.target.previousElementSibling;d.classList.toggle('collapsed');e.target.textContent=d.classList.contains('collapsed')?'展开':'收起';}))}
+function renderTasks(tasks){const filtered=tasks.filter(t=>filters.status==='all'||t.status===filters.status).filter(t=>!filters.keyword||t.title.toLowerCase().includes(filters.keyword.toLowerCase()));return panel('Task','实施任务',filtered.length,filterControls('task'),filtered.length?filtered.map(t=>`<article class="item"><div class="item-top"><span class="item-id">#${esc(t.id)} · ${esc(t.taskNumber)}</span>${badge('status',t.status,TASK_LABELS[t.status])}</div><div class="item-title">${esc(t.title)}</div><div class="item-desc">${esc(t.specTrace||'无 Spec 溯源')}${t.rejectReason?' · 驳回：'+esc(t.rejectReason):''}</div></article>`).join(''):'<div class="empty">无 Task</div>')}
+function renderIssues(issues){let filtered=[...issues].sort((a,b)=>SEVERITY_ORDER[a.severity]-SEVERITY_ORDER[b.severity]);if(filters.status!=='all')filtered=filtered.filter(i=>i.status===filters.status);if(filters.dimension!=='all')filtered=filtered.filter(i=>i.dimension===filters.dimension);if(filters.severity!=='all')filtered=filtered.filter(i=>i.severity===filters.severity);if(filters.keyword)filtered=filtered.filter(i=>i.description.toLowerCase().includes(filters.keyword.toLowerCase()));return panel('Issue','审查发现',filtered.length,filterControls('issue'),filtered.length?filtered.map(i=>`<article class="item"><div class="item-top"><span class="item-id">#${esc(i.id)} · ${esc(i.file)}${i.line?':'+i.line:''}</span>${badge('status',i.status,ISSUE_LABELS[i.status])}</div><div class="item-title">${esc(i.description)}</div>${longText(i.suggestion||i.rootCauseGuess)}<div class="item-meta">${badge('severity',String(i.severity).toLowerCase(),SEVERITY_LABELS[i.severity]||i.severity)}${badge('dimension',i.dimension,DIM_LABELS[i.dimension]||i.dimension)}${badge('status',i.sourcePhase,i.sourcePhase)}</div></article>`).join(''):'<div class="empty">无 Issue</div>')}
+function renderBlockers(blockers){let filtered=blockers;if(filters.status!=='all')filtered=filtered.filter(b=>b.status===filters.status);if(filters.keyword)filtered=filtered.filter(b=>b.description.toLowerCase().includes(filters.keyword.toLowerCase()));return panel('Blocker','待外部处理',filtered.length,filterControls('blocker'),filtered.length?filtered.map(b=>`<article class="item"><div class="item-top"><span class="item-id">#${esc(b.id)}${b.taskId?' · TASK #'+esc(b.taskId):''}</span>${badge('status',b.status,BLOCKER_LABELS[b.status])}</div><div class="item-title">${esc(b.description)}</div>${longText(b.evidence)}<div class="item-meta">${badge('status',b.status,b.status)}</div></article>`).join(''):'<div class="empty">无待处理 Blocker</div>')}
+function render(){const g=currentGroup();const tasks=g.tasks||[],issues=g.issues||[],blockers=g.blockers||[];document.getElementById('changeId').textContent=mockState.changeId;document.getElementById('baseBranch').textContent=mockState.baseBranch||'-';document.getElementById('updatedAt').textContent=mockState.updatedAt?new Date(mockState.updatedAt).toLocaleTimeString():'-';document.getElementById('dashboard').innerHTML=`${renderStepper(g)}${renderReview(g)}<section class="board">${renderTasks(tasks)}${renderIssues(issues)}${renderBlockers(blockers)}</section>`;bindExpands();bindFilters()}
+function bindFilters(){document.querySelectorAll('[data-filter]').forEach(el=>el.addEventListener('change',e=>{const k=e.target.dataset.filter;const v=e.target.value;filters[k]=v==='all'?'all':v;if(k==='keyword')filters[k]=v;render()}))}
+renderGroups();render();
+document.getElementById('groupList').addEventListener('click',e=>{const b=e.target.closest('[data-gid]');if(b){selectedGroupId=b.dataset.gid;renderGroups();render()}});
+</script>
+</body>
+</html>

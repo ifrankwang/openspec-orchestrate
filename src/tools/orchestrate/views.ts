@@ -247,14 +247,9 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
     lines.push("- (无)")
   } else {
     for (const s of tg.relevantSpecs) {
-      lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
+lines.push(`- \`openspec/changes/${state.changeId}/\``)
     }
   }
-  lines.push("")
-  lines.push("## Task (open)", "")
-  const open = tg.tasks.filter((t) => t.status === "open")
-  if (open.length === 0) lines.push("- (无)")
-  else for (const t of open) lines.push(renderTaskItem(t))
   lines.push("")
   lines.push("## Blocker (待架构复核)", "")
   const unresolvedBlockers = tg.blockers.filter((blocker) => blocker.status !== "resolved")
@@ -273,16 +268,7 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
     }
   }
   lines.push("")
-  lines.push("## Issue (申请豁免中)", "")
-  const exemption = tg.issues.filter((i) => i.status === "exemption_requested")
-  if (exemption.length === 0) lines.push("- (无)")
-  else for (const i of exemption) lines.push(renderIssueItem(i))
-  lines.push("")
-  lines.push("## Issue (open)", "")
-  const openIssues = tg.issues.filter((i) => i.status === "open")
-  if (openIssues.length === 0) lines.push("- (无)")
-  else for (const i of openIssues) lines.push(renderIssueItem(i))
-  lines.push("")
+  
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("1. 读取以下文档原文：clarify.md（架构方向结论）、tasks.md（全部任务组标题 + 当前组全文）、design.md（当前组相关章节）、上方「相关 spec 文件」所有文件")
@@ -296,7 +282,8 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
   lines.push("   - 接口/模型是否与 design 冲突？")
   lines.push("   - 任务排列是否合理？（基础架构类任务应在更早完成）")
   lines.push("4. 可本地修复的问题（仅限 md 文件）→ edit；信息缺口 → opx_arch_submit(outcome=\"awaiting_user\")")
-  lines.push("5. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")")
+  lines.push("5. 复核上方「Blocker (待架构复核)」中 ready_for_architect 项（结合用户答复裁定）；opx_arch_submit(outcome=ready) 自动结案 reported/ready_for_architect blocker")
+  lines.push("6. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")")
   return lines.join("\n")
 }
 

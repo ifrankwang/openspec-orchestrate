@@ -368,7 +368,7 @@ export const resume_blocker = tool({
 
 export const status = tool({
   description:
-    "统一只读状态/上下文查询。按调用者角色路由：orchestrator→统计+worktree；architect→spec/task/issue/blocker；developer→worktree/boundary/task/issue；reviewer-tool→tool 层控件 issue；reviewer-task→task 验证状态；quality reviewer→自维度存量 issue。",
+    "统一只读状态/上下文查询。按调用者角色路由：orchestrator→统计+worktree；architect→spec/blocker；developer→worktree/boundary/task/issue；reviewer-tool→tool 层控件 issue；reviewer-task→task 验证状态；quality reviewer→自维度存量 issue。",
   args: {},
   async execute(_args, context) {
     const state = await readStateByWorktree(context.worktree)

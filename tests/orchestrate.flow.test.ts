@@ -21,6 +21,7 @@ import {
   quality_review_submit,
   resolve_review,
   complete_task_group,
+  MAX_RETRIES,
   __setGitRunner} from "../src/tools/orchestrate"
 import { FakeGitRunner, makeCtx } from "./helpers"
 
@@ -851,12 +852,12 @@ describe("12. resolve_review — continue / giveup", () => {
       fakeGit.diffs.set(devWt, ["src/F1.java"])
       await dev_submit.execute({}, d)
 
-      // 2. 3 轮 tool 失败（审查重试达到检查点 retryCount=3）：
-      //    - 前 2 轮 rejected（→dev_submit 修复）
-      //    - 第 3 轮 needs_user_decision
+      // 2. ${MAX_RETRIES} 轮 tool 失败（审查重试达到检查点 retryCount=${MAX_RETRIES}）：
+      //    - 前 ${MAX_RETRIES - 1} 轮 rejected（→dev_submit 修复）
+      //    - 第 ${MAX_RETRIES} 轮 needs_user_decision
       // 每轮需通过 init(recovery to review)→dev_submit(review mode)
       // 重置 tool.completed 后才能再次提交 tool
-      for (let round = 1; round <= 3; round++) {
+      for (let round = 1; round <= MAX_RETRIES; round++) {
         state = readStateSync(wt, CID)
         const tg = state.taskGroups.find((g: any) => g.id === "1")
         await init.execute({
@@ -871,7 +872,7 @@ describe("12. resolve_review — continue / giveup", () => {
         const r = JSON.parse(await tool_review_submit.execute({ passed: false, issues: [], fixed_issue_ids: []}, toolR))
 
         expectNoOrchestration(r.message)
-        if (round < 3) {
+        if (round < MAX_RETRIES) {
           expect(r.status).toBe("recorded")
           expect(r.retry_count).toBe(round)
         } else {
@@ -886,7 +887,7 @@ describe("12. resolve_review — continue / giveup", () => {
 
       state = readStateSync(wt, CID)
       const tgS = state.taskGroups.find((g: any) => g.id === "1")
-      expect(tgS.phases.review.retryCount).toBe(3)
+      expect(tgS.phases.review.retryCount).toBe(MAX_RETRIES)
       expect(tgS.phases.review.tool.completed).toBe(false)
       expect(tgS.phases.review.task.completed).toBe(false)
       expect(tgS.status).toBe("dev_impl")
@@ -938,8 +939,8 @@ describe("12. resolve_review — continue / giveup", () => {
       expectNoOrchestration(lastRes.message)
       expect(lastRes.retry_count).toBe(1)
 
-      // Rounds 2-3：recovery → dev_submit（重置 progress）→ quality submit（仅 style 维度）。
-      for (let round = 2; round <= 3; round++) {
+      // Rounds 2-5：recovery → dev_submit（重置 progress）→ quality submit（仅 style 维度）。
+      for (let round = 2; round <= MAX_RETRIES; round++) {
         state = readStateSync(wt, CID)
         const tg = state.taskGroups.find((g: any) => g.id === "1")
         await init.execute({
@@ -961,7 +962,7 @@ describe("12. resolve_review — continue / giveup", () => {
           fixed_issue_ids: submittedIssueId ? [submittedIssueId] : []}, makeCtx("openspec-reviewer-style", wt)))
 
         expectNoOrchestration(lastRes.message)
-        if (round < 3) {
+        if (round < MAX_RETRIES) {
           expect(lastRes.status).toBe("recorded")
           expect(lastRes.retry_count).toBe(round)
         } else {

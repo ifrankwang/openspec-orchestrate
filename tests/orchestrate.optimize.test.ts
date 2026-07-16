@@ -18,6 +18,7 @@ import {
   tool_review_submit,
   task_review_submit,
   quality_review_submit,
+  MAX_RETRIES,
   __setGitRunner} from "../src/tools/orchestrate"
 import { FakeGitRunner, makeCtx, setupWithFakeGit, teardown, readState } from "./helpers"
 
@@ -771,11 +772,11 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
     await task_review_submit.execute({ passed: true, verified_task_ids: ["1", "2"], failed_task_ids: [], fixed_issue_ids: [] }, taskR)
 
-    // 写状态文件设 retryCount=3, lastResolvedRetryCount=3
+    // 写状态文件设 retryCount=5, lastResolvedRetryCount=5
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
-    tg2.phases.review.retryCount = 3
-    tg2.phases.review.lastResolvedRetryCount = 3
+    tg2.phases.review.retryCount = MAX_RETRIES
+    tg2.phases.review.lastResolvedRetryCount = MAX_RETRIES
     writeFileSync(
       join(wt, ".opencode", ".orchestrate_state", `${CID}.json`),
       JSON.stringify(state, null, 2)
@@ -796,8 +797,8 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     expect(tg3.phases.review.tool.completed).toBe(true)
     expect(tg3.phases.review.task.completed).toBe(true)
     // preserveProgress 应保留 retryCount 和 lastResolvedRetryCount
-    expect(tg3.phases.review.retryCount).toBe(3)
-    expect(tg3.phases.review.lastResolvedRetryCount).toBe(3)
+    expect(tg3.phases.review.retryCount).toBe(MAX_RETRIES)
+    expect(tg3.phases.review.lastResolvedRetryCount).toBe(MAX_RETRIES)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

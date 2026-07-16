@@ -10,7 +10,7 @@ import { join } from "node:path"
 import {
   init, status, set_worktree, arch_submit, dev_submit,
   tool_review_submit, task_review_submit, quality_review_submit,
-  resolve_review, __setGitRunner} from "../src/tools/orchestrate"
+  resolve_review, MAX_RETRIES, __setGitRunner} from "../src/tools/orchestrate"
 import { FakeGitRunner, makeCtx } from "./helpers"
 
 const CID = "test-orch-next"
@@ -311,7 +311,7 @@ describe("S8: quality failed (non-checkpoint)", () => {
     for (const dim of passDims) {
       await quality_review_submit.execute({ passed: true, issues: []}, makeCtx(`openspec-reviewer-${dim}`, wt))
     }
-    // style fails with blocking issue → triggers fail (not checkpoint since retryCount=0→1 < 3)
+    // style fails with blocking issue → triggers fail (not checkpoint since retryCount=0→1 < MAX_RETRIES)
     await quality_review_submit.execute({ passed: false,
       issues: [{ severity: "Low", file: "src/x.java", line: 1, description: "Style issue", suggestion: "Fix" }]}, makeCtx("openspec-reviewer-style", wt))
 
@@ -323,10 +323,10 @@ describe("S8: quality failed (non-checkpoint)", () => {
 })
 
 // ═══════════════════════════════════════════════════
-//  场景 9: 检查点（retryCount=3，needs_user_decision）
+//  场景 9: 检查点（retryCount=${MAX_RETRIES}，needs_user_decision）
 // ═══════════════════════════════════════════════════
 
-describe("S9: checkpoint (3 tool failures)", () => {
+describe("S9: checkpoint (${MAX_RETRIES} tool failures)", () => {
   test("status 输出含 resolve_review 指引", async () => {
     const root = `/tmp/osn9-${Date.now()}`
     const wt = freshWt(root)
@@ -347,8 +347,8 @@ describe("S9: checkpoint (3 tool failures)", () => {
     fakeGit.diffs.set(devWt, ["src/F1.java"])
     await dev_submit.execute({}, d)
 
-    // 2. 3 轮 tool 失败
-    for (let round = 1; round <= 3; round++) {
+    // 2. ${MAX_RETRIES} 轮 tool 失败
+    for (let round = 1; round <= MAX_RETRIES; round++) {
       state = readStateSync(wt, CID)
       const tg = state.taskGroups.find((g: any) => g.id === "1")
       // 第 2、3 轮需 recovery + dev_submit 重置 tool
@@ -397,8 +397,8 @@ describe("S10: resolve_review(continue) 后正常推进", () => {
     fakeGit.diffs.set(devWt, ["src/F1.java"])
     await dev_submit.execute({}, d)
 
-    // 2. 3 轮 tool 失败（达到检查点，retryCount=3）
-    for (let round = 1; round <= 3; round++) {
+    // 2. ${MAX_RETRIES} 轮 tool 失败（达到检查点，retryCount=${MAX_RETRIES}）
+    for (let round = 1; round <= MAX_RETRIES; round++) {
       state = readStateSync(wt, CID)
       const tg = state.taskGroups.find((g: any) => g.id === "1")
       if (round > 1) {
@@ -411,11 +411,11 @@ describe("S10: resolve_review(continue) 后正常推进", () => {
       await tool_review_submit.execute({ passed: false, issues: [], fixed_issue_ids: []}, toolR)
     }
 
-    // 3. resolve_review(continue) → lastResolvedRetryCount=3, status=dev_impl
+    // 3. resolve_review(continue) → lastResolvedRetryCount=${MAX_RETRIES}, status=dev_impl
     await resolve_review.execute({ decision: "continue" }, o)
 
-    // 4. dev_submit → status=review, retryCount=3, lastResolvedRetryCount=3
-    fakeGit.diffs.set(devWt, ["src/FR3.java"])
+    // 4. dev_submit → status=review, retryCount=${MAX_RETRIES}, lastResolvedRetryCount=${MAX_RETRIES}
+    fakeGit.diffs.set(devWt, ["src/FR${MAX_RETRIES}.java"])
     await dev_submit.execute({}, d)
 
     // 5. opx_status 不应含 "以上状态异常" 和 "recovery"

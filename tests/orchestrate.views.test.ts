@@ -5,6 +5,7 @@
 import { describe, expect, test, afterAll } from "bun:test"
 import { __setGitRunner } from "../src/tools/orchestrate"
 import {
+  renderOrchestratorView,
   renderArchitectView,
   renderDeveloperView,
   renderToolReviewView,
@@ -136,5 +137,56 @@ describe("视图「操作指引」段", () => {
     expect(output).toContain("## 操作指引")
     expect(output).toContain("opx_quality_review_submit")
     expect(output).toContain("按本维度审查标准")
+  })
+})
+
+describe("一致性分析 sourcePhase 过滤", () => {
+  function mockToolStyleIssue(id: string, severity = "Low"): IssueItem {
+    return {
+      id, dimension: "style", sourcePhase: "tool",
+      severity, file: "src/Foo.java", line: 1,
+      description: "tool style issue", suggestion: "fix",
+      status: "open", refixCount: 0,
+      rootCauseGuess: null, exemptReason: null, rejectReason: null,
+    }
+  }
+  function mockQualityStyleIssue(id: string, severity = "Low"): IssueItem {
+    return {
+      id, dimension: "style", sourcePhase: "quality",
+      severity, file: "src/Foo.java", line: 1,
+      description: "quality style issue", suggestion: "fix",
+      status: "open", refixCount: 0,
+      rootCauseGuess: null, exemptReason: null, rejectReason: null,
+    }
+  }
+
+  test("quality.style=passed + tool sourcePhase style issue 不报内部矛盾", () => {
+    const state = mockState()
+    const tg = baseTg({
+      status: "review",
+      worktreePath: "/wt",
+      branchName: "tg-1",
+      baseRef: "base",
+      lastFilesChanged: ["src/Foo.java"],
+      issues: [mockToolStyleIssue("i1")],
+    })
+    tg.phases.review.quality.progress.style = "passed"
+    const output = renderOrchestratorView(state, tg)
+    expect(output).not.toContain("review 内部矛盾")
+  })
+
+  test("quality.style=passed + quality sourcePhase style issue 报内部矛盾", () => {
+    const state = mockState()
+    const tg = baseTg({
+      status: "review",
+      worktreePath: "/wt",
+      branchName: "tg-1",
+      baseRef: "base",
+      lastFilesChanged: ["src/Foo.java"],
+      issues: [mockQualityStyleIssue("i1")],
+    })
+    tg.phases.review.quality.progress.style = "passed"
+    const output = renderOrchestratorView(state, tg)
+    expect(output).toContain("review 内部矛盾")
   })
 })

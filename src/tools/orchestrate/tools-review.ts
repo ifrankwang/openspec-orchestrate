@@ -160,7 +160,10 @@ export const dev_submit = tool({
     let requiredDims: ReviewDimension[] = []
 
     for (const task of tg.tasks) {
-      if (task.status === "open" || task.status === "rejected") task.status = "submitted"
+      if (task.status === "open" || task.status === "rejected") {
+        task.status = "submitted"
+        task.rejectReason = null
+      }
     }
     const remainingTasks = tg.tasks.filter(
       (t) => t.status === "open" || t.status === "rejected"
@@ -413,7 +416,7 @@ export const task_review_submit = tool({
 
     for (const id of verified) {
       const task = tasks.find((t) => t.id === id)
-      if (task && task.status === "submitted") { task.status = "verified" }
+      if (task && task.status === "submitted") { task.status = "verified"; task.rejectReason = null }
     }
     for (const f of failed) {
       const task = tasks.find((t) => t.id === f.task_id)

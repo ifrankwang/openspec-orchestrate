@@ -1,7 +1,7 @@
 import type { TaskGroupState, IssueItem, Dimension, OrchestrateState, ReviewDimension } from "./types.js"
 import { REVIEW_DIMENSIONS } from "./types.js"
-import { MAX_RETRIES, BLOCKING_SEVERITIES } from "./constants.js"
-import { handleRetryCheckpoint, isStatusUnresolved } from "./derive.js"
+import { MAX_RETRIES } from "./constants.js"
+import { handleRetryCheckpoint, hasBlockingIssues } from "./derive.js"
 import { writeState } from "./state.js"
 
 export function mergeExecutionBoundary(tg: TaskGroupState, expansion: { allowed_directories?: string[]; allowed_packages?: string[] }): void {
@@ -37,6 +37,7 @@ export function deduplicateAndAddIssues(
     const isDuplicate = existingIssues.some(
       (existing) =>
         existing.dimension === dimension &&
+        existing.sourcePhase === sourcePhase &&
         existing.file === iss.file &&
         existing.line === iss.line &&
         existing.description === iss.description &&
@@ -162,9 +163,7 @@ export async function finalizeQualityPhase(
   }
 
   const failedDims = nonPassedDims.filter(d => tg.phases.review.quality.progress[d] === "failed")
-  const hasResidualBlocking = tg.issues.some(
-    (i) => isStatusUnresolved(i.status) && (BLOCKING_SEVERITIES as readonly string[]).includes(i.severity)
-  )
+  const hasResidualBlocking = hasBlockingIssues(tg.issues, "quality")
 
   if (failedDims.length === 0 && !hasResidualBlocking) {
     await writeState(context.worktree, state)

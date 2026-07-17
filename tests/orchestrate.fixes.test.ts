@@ -122,7 +122,7 @@ describe("修复项2+3: dev_submit / task_review_submit verified 清除 rejectRe
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
     await arch_submit.execute({
-      outcome: "ready",
+      outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" },
     }, a)
     await set_worktree.execute({}, o)

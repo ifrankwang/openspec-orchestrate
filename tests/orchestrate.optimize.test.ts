@@ -52,7 +52,7 @@ async function setupThroughDevSubmit(
   const d = makeCtx("openspec-developer", wt)
 
   await init.execute({ change_id: CID, task_group_id: "1" }, o)
-  await arch_submit.execute({ outcome: "ready",
+  await arch_submit.execute({ outcome: "ready", issues: [],
     execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
   await set_worktree.execute({}, o)
   const state = readStateSync(wt, CID)
@@ -73,7 +73,7 @@ async function setupThroughReviewReady(
   const taskR = makeCtx("openspec-reviewer-task", wt)
 
   await init.execute({ change_id: CID, task_group_id: "1" }, o)
-  await arch_submit.execute({ outcome: "ready",
+  await arch_submit.execute({ outcome: "ready", issues: [],
     execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
   await set_worktree.execute({}, o)
   let state = readStateSync(wt, CID)
@@ -135,7 +135,7 @@ describe("B1. opx_status 阶段门禁", () => {
 
     // 只做到 set_worktree（status=dev_impl），不调 dev_submit（dev_submit 现在自动进 review）
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
 
@@ -253,7 +253,7 @@ describe("B1. opx_status 阶段门禁", () => {
 
     // dev_impl 阶段 — status 不应抛 gate 异常
     // 通过 arch_submit + set_worktree 进入 dev_impl
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, makeCtx("openspec-architect", wt))
     await set_worktree.execute({}, o)
     const view2 = await status.execute({}, o)
@@ -281,7 +281,7 @@ describe("B2. Recovery 自动补非空 executionBoundary", () => {
 
     // 先走正常流程设好 worktree
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -319,7 +319,7 @@ describe("B2. Recovery 自动补非空 executionBoundary", () => {
     const a = makeCtx("openspec-architect", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -365,7 +365,7 @@ describe("B2. Recovery 自动补非空 executionBoundary", () => {
 
     // 走完整的流程设边界
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src/main"], allowed_packages: ["com.original"], notes: "original notes" }}, makeCtx("openspec-architect", wt))
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -405,7 +405,7 @@ describe("B2. Recovery 自动补非空 executionBoundary", () => {
 
     // 正常走到 dev_submit
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -472,7 +472,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     const a = makeCtx("openspec-architect", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -506,7 +506,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     const a = makeCtx("openspec-architect", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -540,7 +540,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     const a = makeCtx("openspec-architect", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     const state = readStateSync(wt, CID)
@@ -610,7 +610,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
 
     // 跑完整到 review + tool pass + task pass
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -674,7 +674,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
 
     // 跑完整到 review + tool pass + task pass
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -756,7 +756,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
 
     // 跑完整到 review + tool pass + task pass
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, makeCtx("openspec-architect", wt))
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)
@@ -821,7 +821,7 @@ describe("B4. 空 issue 正常提交回归", () => {
     const toolR = makeCtx("openspec-reviewer-tool", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await arch_submit.execute({ outcome: "ready",
+    await arch_submit.execute({ outcome: "ready", issues: [],
       execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, makeCtx("openspec-architect", wt))
     await set_worktree.execute({}, o)
     let state = readStateSync(wt, CID)

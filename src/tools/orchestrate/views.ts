@@ -282,10 +282,9 @@ lines.push(`- \`openspec/changes/${state.changeId}/\``)
   lines.push("   - 接口/模型是否与 design 冲突？")
   lines.push("   - 任务排列是否合理？（基础架构类任务应在更早完成）")
   lines.push("4. 可本地修复的问题（仅限 md 文件）→ edit；信息缺口 → opx_arch_submit(outcome=\"awaiting_user\")")
-  lines.push("5. 识别本 change 涉及应标准化的共性能力：优先判断能否通过确定性规则自动拦截（按已加载技术栈 skill 的工具化指引）；不能工具化的，edit `.agents/skills/` 固化为项目执行标准 skill")
+  lines.push("5. 识别任务中是否已存在通用做法（识别方式见项目 AGENTS.md/CLAUDE.md）：有则注明 dev 须遵循现有做法（任务明确要求换做法除外）；无但判断应做成通用做法的，在 notes 注明拓展性要求")
   lines.push("6. 复核上方「Blocker (待架构复核)」中 ready_for_architect 项（结合用户答复裁定）；opx_arch_submit(outcome=ready) 自动结案 reported/ready_for_architect blocker")
-  lines.push("7. 将本 change 必须加载的 skill 路径填入 execution_boundary.skills")
-  lines.push("8. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")")
+  lines.push("7. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")")
   return lines.join("\n")
 }
 
@@ -310,12 +309,6 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
     lines.push("- **允许包**:")
     for (const p of b.allowed_packages) lines.push(`  - \`${p}\``)
     if (b.notes) lines.push(`- **实施前请注意遵守**: ${b.notes}`)
-    if (b.skills && b.skills.length > 0) {
-      lines.push("- **需加载 skill**:")
-      for (const sk of b.skills) lines.push(`  - \`${sk}\``)
-      lines.push("")
-      lines.push("加载 executionBoundary.skills 中的 skill：优先 skill tool 加载（若已注册），未注册则 read 路径读取；再按 available_skills 的 description 自匹配兜底")
-    }
   } else {
     lines.push("- (无)")
   }
@@ -445,6 +438,11 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
   else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
   lines.push("")
+  if (tg.executionBoundary?.notes) {
+    lines.push("## 实施指引", "")
+    lines.push(tg.executionBoundary.notes)
+    lines.push("")
+  }
   lines.push("## Task (待验证)", "")
   const submitted = tg.tasks.filter((t) => t.status === "submitted")
   if (submitted.length === 0) lines.push("- (无)")
@@ -469,11 +467,16 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   lines.push("")
   lines.push("## 操作指引", "")
   lines.push("")
-  lines.push("1. Task 产出验证：逐条核验「Task (待验证)」中每个 task 的产出（文件是否存在、目录是否非空、配置项/依赖是否就绪），按技术栈 skill 中构建命令验证编译")
-  lines.push("2. 服务启动验证：启动基础设施 → 启动应用 → 健康检查轮询（60s）→ 识别新增/变更接口 → curl 场景化测试（正常+边界）→ 记录结果 → 停止服务")
-  lines.push("3. 测试代码审查：断言放水、边界缺失、Mock 过度、覆盖不足")
-  lines.push("4. 缺少验证所需真实资源/输入/凭证 → opx_task_review_submit(passed=false)，不得以 stub/降级/跳过判定通过")
-  lines.push("5. 汇总 → opx_task_review_submit")
+  const hasGuidance = !!tg.executionBoundary?.notes
+  let stepNum = 1
+  if (hasGuidance) {
+    lines.push(`${stepNum++}. 校验实施内容是否遵循上方「实施指引」中的指引；发现违背时报 issue`)
+  }
+  lines.push(`${stepNum++}. Task 产出验证：逐条核验「Task (待验证)」中每个 task 的产出（文件是否存在、目录是否非空、配置项/依赖是否就绪），按技术栈 skill 中构建命令验证编译`)
+  lines.push(`${stepNum++}. 服务启动验证：启动基础设施 → 启动应用 → 健康检查轮询（60s）→ 识别新增/变更接口 → curl 场景化测试（正常+边界）→ 记录结果 → 停止服务`)
+  lines.push(`${stepNum++}. 测试代码审查：断言放水、边界缺失、Mock 过度、覆盖不足`)
+  lines.push(`${stepNum++}. 缺少验证所需真实资源/输入/凭证 → opx_task_review_submit(passed=false)，不得以 stub/降级/跳过判定通过`)
+  lines.push(`${stepNum++}. 汇总 → opx_task_review_submit`)
   return lines.join("\n")
 }
 
@@ -527,11 +530,9 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("1. 逐文件审查「上轮变更文件」，按本维度审查标准发现问题")
-  lines.push("2. 识别 dev 重复实现应抽取为标准的能力：优先判断能否通过确定性规则自动拦截；不能工具化的，edit `.agents/skills/` 固化为项目执行标准 skill，路径入 executionBoundary.skills 参数")
-  lines.push("3. 核验「本维度 Issue (待确认)」中每条是否真已修复 → fixed_issue_ids（未达标的不列入）")
-  lines.push("4. 裁定「本维度 Issue (豁免裁定中)」→ exempt_issue_ids / rejected_issue_ids")
-  lines.push("5. 新发现的本维度问题 → 报 issue（severity 不可下调来使维度 passed）")
-  lines.push("6. 产出 skill 路径传 quality_review_submit 的 skills 参数")
-  lines.push("7. 完成 → opx_quality_review_submit")
+  lines.push("2. 核验「本维度 Issue (待确认)」中每条是否真已修复 → fixed_issue_ids（未达标的不列入）")
+  lines.push("3. 裁定「本维度 Issue (豁免裁定中)」→ exempt_issue_ids / rejected_issue_ids")
+  lines.push("4. 新发现的本维度问题 → 报 issue（severity 不可下调来使维度 passed）")
+  lines.push("5. 完成 → opx_quality_review_submit")
   return lines.join("\n")
 }

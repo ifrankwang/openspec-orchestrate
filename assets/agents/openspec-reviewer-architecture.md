@@ -4,9 +4,7 @@ mode: subagent
 hidden: true
 steps: 200
 permission:
-  edit:
-    ".agents/skills/**/*.md": allow
-    "*": deny
+  edit: deny
   bash: deny
 ---
 

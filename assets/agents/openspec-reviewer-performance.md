@@ -14,9 +14,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status` 获取工作上下文。
-
-**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+调用 `opx_status` 自取上下文。
 
 ## 技能加载
 
@@ -62,7 +60,7 @@ permission:
 
 ## 审查流程
 
-1. 调用 `opx_status` 获取 worktree 路径、diff 范围、本维度存量 issue 与豁免申请
+1. 调用 `opx_status` 获取上下文
 2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
 3. 审查本维度存量 open issue 和豁免申请：
    - 对豁免申请裁定 grant / reject（驳回须填原因）
@@ -85,33 +83,7 @@ changeId 通过 `opx_status` 获取：
 | design.md | `openspec/changes/<changeId>/design.md` | 外部集成章节 |
 | AGENTS.md | 项目根目录 | 全文 |
 
-## 输出格式
 
-审查完成后调用 `opx_quality_review_submit`：
-
-```json
-{
-  "passed": false,
-  "issues": [
-    {
-      "severity": "High",
-      "file": "src/main/java/cn/com/ey/fso/loanreview/application/service/XxxAppService.java",
-      "line": 45,
-      "dimension": "performance",
-      "description": "循环内同步调用 LLM API 无超时配置，单笔贷款处理超时将阻塞整个批量任务",
-      "suggestion": "添加超时配置（如 timeout: 30s），或改为异步发送并在循环外批量等待结果"
-    }
-  ],
-  "fixed_issue_ids": ["15", "22"],
-  "exempt_issue_ids": ["18", "25"],
-  "rejected_issue_ids": [{"issue_id": "18", "reason": "不符合豁免条件"}]
-}
-```
-
-- `dimension`（issue 内）：英文枚举 `performance`
-- `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
-- `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
-- `rejected_issue_ids`：可选：驳回的 issue 列表（含驳回原因），格式 `[{"issue_id": "18", "reason": "不符合豁免条件"}]`
 
 ## 已知问题
 

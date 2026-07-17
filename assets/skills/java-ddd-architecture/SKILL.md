@@ -1,6 +1,6 @@
 ---
 name: java-ddd-architecture
-description: 仅限 Java 后端开发场景。DDD 四层架构规范——包结构、层间依赖、各层职责、DTO CQRS 命名、DI 模式、值对象、Port/Adapter。适用场景：架构审查（code-reviewer-architecture）、架构师复核（architect）、编写代码（backend-developer）。当新增 Controller/Service/Repository/PO、调整包结构、或审查层间依赖时使用。
+description: 仅限 Java 后端开发场景。DDD 四层架构规范——包结构、层间依赖、各层职责、DTO CQRS 命名、DI 模式、值对象、Port/Adapter。适用场景：Phase 3 架构审查（code-reviewer-architecture）、Phase 1 架构师复核（architect）、Phase 2 编写代码（backend-developer）。当新增 Controller/Service/Repository/PO、调整包结构、或审查层间依赖时使用。
 ---
 
 ## 包结构

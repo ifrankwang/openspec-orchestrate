@@ -660,7 +660,7 @@ export const resolve_review = tool({
           status: "ok",
           decision: "continue",
           phase: "review(in_progress)",
-          message: "已重置各层审查进度，回到 tool 层基线。请分派 openspec-developer 修复后调用 opx_dev_submit。",
+          message: "已重置各层审查进度，回到 tool 层基线。编排者请调用 opx_status 确认下一步。",
         },
         null,
         2

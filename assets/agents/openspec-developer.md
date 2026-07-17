@@ -14,11 +14,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任何任务前必须**：调用 `opx_status` 获取你的开发上下文。
-
-工作环境（worktree 路径、执行边界等）由 `opx_status` 提供，你**不需要**在 worktree 中创建任何新 worktree——编排者已通过 `opx_orch_set_worktree` 设置，直接复用。
-
-**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+调用 `opx_status` 自取上下文。工作环境（worktree 路径、执行边界等）由 `opx_status` 提供，你**不需要**在 worktree 中创建任何新 worktree——编排者已通过 `opx_orch_set_worktree` 设置，直接复用。
 
 ## 技能加载
 
@@ -37,7 +33,7 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 |------|------|---------|
 | clarify.md | `openspec/changes/<changeId>/clarify.md` | **架构方向结论**部分 |
 | design.md | `openspec/changes/<changeId>/design.md` | 全文（200-500 行） |
-| spec/*.md | `opx_status` 返回的 relevantSpecs 中各 spec 路径 | 需求细节和验收标准 |
+| spec/*.md | 通过 `opx_status` 获取 | 需求细节和验收标准 |
 | AGENTS.md | 项目根目录 | 全文 |
 
 ## 场景识别与行为模式
@@ -67,18 +63,11 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 
 被分派修改时，调用 `opx_status` 获取 Task 和 Issue 清单，按状态实施：
 
-1. 调用 `opx_status` 查看 Task 和 Issue 清单：
-    - **Task（待完成）**：open 状态 task，逐个实现
-    - **Task（已驳回）**：rejected 状态 task，按驳回原因重修
-    - **Issue（待修复）**：open 或 rejected 状态的问题，优先修复
-    - **Issue（豁免裁定中）**：exemption 状态，等待对应维度 reviewer 裁定，本轮跳过不修
-    - 已 verified / 已 exempted 的 issue 不展示，无需关注
+1. 调用 `opx_status` 查看 Task 和 Issue 清单，按状态分类实施
 2. 修复完成后先 commit，再调 `opx_dev_submit(outcome="completed", fixed_issue_ids=...)`
 3. 对不可修的 issue 调用 `opx_dev_submit(request_exempts=[...])` 申请豁免，交对应维度 reviewer 裁定
-4. 修复范围自动覆盖被标记文件：reviewer 报 issue 时，工具已把 issue 指向文件的目录并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停
-   reviewer 通过 `boundary_expansion` 声明的扩展范围同样已并入执行边界
-5. 工具改进 issue（`suggestion` 含 `[tool_eligible]`）的 `file` 已指向规则/配置文件，其目录已由工具并入执行边界。按 `suggestion` 中草案直接改该配置文件即可，不越界、无需暂停
-6. 修复可按 issue 中的 `suggestion` 直接执行（reviewer 已在 issue 中写好了具体修复）
+4. 修复范围自动覆盖被标记文件：reviewer 报 issue 时，issue 指向文件的目录已并入执行边界，故修复这些文件（含回归引入的问题）不算越界，无需暂停。reviewer 通过 `boundary_expansion` 声明的扩展范围同样已并入执行边界
+5. 修复可按 issue 中的 `suggestion` 直接执行（reviewer 已在 issue 中写好了具体修复）
 7. 遇到外部依赖、凭证、真实输入，或必须 stub、降级、跳过验收才能继续时，提交 `opx_dev_submit(outcome="blocked", blocker=...)`。`blocker` 含 `source_role`、`task_id`、`category`、`description`、`evidence`、`attempted_actions`、`options`。
 
 ## 代码规范
@@ -117,16 +106,6 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 ## 最终提交（opx_dev_submit）
 
 完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit(outcome="completed")`。生产路径禁止用 stub、fake、空实现或硬编码成功替代验收。
-
-```json
-{
-  "outcome": "completed",
-  "fixed_issue_ids": ["15", "22"],
-  "request_exempts": [
-    { "issue_id": "18", "reason": "本任务组范围内为已知技术债，需引入反向索引架构" }
-  ]
-}
-```
 
 ## 工具调用边界
 

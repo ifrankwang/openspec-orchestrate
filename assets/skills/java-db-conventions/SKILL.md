@@ -1,6 +1,6 @@
 ---
 name: java-db-conventions
-description: 仅限 Java 后端开发场景。数据库规范——PostgreSQL 表结构约定、审计字段、逻辑删除、索引命名、操作人来源、MyBatisPlus 持久化用法、Flyway 迁移。适用场景：编写 PO/Mapper/迁移脚本（backend-developer）、DB 规范审查（code-reviewer）、设计表结构。当新增表、编写 Mapper、或修改 Flyway 脚本时使用。
+description: 仅限 Java 后端开发场景。数据库规范——PostgreSQL 表结构约定、审计字段、逻辑删除、索引命名、操作人来源、MyBatisPlus 持久化用法、Flyway 迁移。适用场景：Phase 2 编写 PO/Mapper/迁移脚本（backend-developer）、Phase 3 DB 规范审查（code-reviewer）、Phase 1 设计表结构。当新增表、编写 Mapper、或修改 Flyway 脚本时使用。
 ---
 
 ## 表结构规范

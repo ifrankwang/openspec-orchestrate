@@ -8,15 +8,19 @@ permission:
     ".opencode/.orchestrate_state/*": allow
   edit: deny
   write: deny
-  grep: deny
-  glob: deny
-  list: deny
+  grep: allow
+  glob: allow
+  list: allow
   lsp: deny
   webfetch: deny
   websearch: deny
   skill: deny
   todowrite: deny
-  bash: deny
+  bash:
+    "git *": allow
+    "find *": allow
+    "ls *": allow
+    "*": deny
   task:
     "*": deny
     "openspec-*": allow
@@ -61,40 +65,9 @@ permission:
 
 每次子代理返回后，调 `opx_status` 取权威"下一步"指令并遵循。`opx_status` 列出多个子代理时并排分派（单条消息中同时发送），不串行等待。不自行推断阶段流转。分派/推进决策以工具返回为准。
 
-工具连续返回相同错误（同一工具名 + 同一 error message）时，停止换参数重试，向用户报告错误详情并寻求指导。
-
 ## 初始化与进度恢复
 
 调用 `opx_status` 获取编排者视图。视图末尾含一致性分析段，列出异常类型与建议 recovery 参数。向用户展示结果并通过 question 确认是否修复，然后按需调用 `opx_orch_init` 或 `opx_orch_init(recovery=...)`。
-
-```json
-// 全新开始：
-{ "change_id": "<变更名称>", "task_group_id": "3" }
-
-// 恢复进度：
-{
-  "change_id": "<变更名称>",
-  "task_group_id": "3",
-  "recovery": { "phase": "review", "worktree_path": "/path/to/.worktree/task-group-3", "branch_name": "task-group/3", "preserve_progress": true }
-}
-```
-
-## 汇报格式
-
-每个任务组完成时，向用户输出以下汇总（从 `opx_status` 摘要计数派生）：
-
-```
-## 任务组 N 审查汇总
-
-### 概览
-- task: open=X, submitted=Y, rejected=Z, verified=W
-- issue: open=A, submitted=B, rejected=C, verified=D, exemption_requested=E, exempted=F
-
-### 处理情况
-- 已修复并确认：D 个
-- 已豁免：F 个
-- 用户跳过：（如有）N 个
-```
 
 ## 分派指令模板
 

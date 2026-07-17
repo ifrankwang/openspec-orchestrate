@@ -16,9 +16,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status` 获取工作上下文。
-
-**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+调用 `opx_status` 自取上下文。
 
 ## 技能加载
 
@@ -32,7 +30,6 @@ permission:
    - 项目级 skill 仅在场景匹配时加载（如 Java 项目不加载前端 skill）
    - 选择与当前执行目标（开发/审查/验证）匹配的 skill
 5. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在报告中标注"未加载匹配的技术栈 skill"
-6. 当审查中发现可工具化的 pattern 问题时，报两条分离 issue：业务 issue（`file`=违规代码，指向现场）+ 工具改进 issue（`file`=规则/配置文件，`line=0` 若待新建，`suggestion` 含规则草案 + 验证命令，末尾标 `[tool_eligible]`）。按项目级工具规则改进 skill 中的模板编写规则草案
 
 ## 严重级别
 
@@ -54,8 +51,8 @@ permission:
 
 ### 第一步：Task 产出验证
 
-1. 调用 `opx_status` 获取待验证 Task（submitted 状态）清单
-2. 在 worktree 中通过 `git diff --name-only <baseRef>..HEAD` 获取全量变更文件列表（baseRef 由 `opx_status` 提供）
+1. 调用 `opx_status` 获取待验证 Task 清单
+2. 在 worktree 中通过 `git diff --name-only <baseRef>..HEAD` 获取全量变更文件列表
 3. **逐条验证**每个 submitted task 的产出：
 
 | task 类型 | 验证方式 |
@@ -127,40 +124,7 @@ changeId 通过 `opx_status` 获取，基于其派生：
 | AGENTS.md | 项目根目录 | 全文 |
 | application.yml | `src/main/resources/` | 全文（测试 profile 与依赖配置） |
 
-## 输出格式
 
-验证完成后调用 `opx_task_review_submit`：
-
-```json
-{
-  "passed": false,
-  "verified_task_ids": ["1", "2"],
-  "failed_task_ids": [
-    { "task_id": "3", "reason": "产出文件不存在" }
-  ],
-  "issues": [
-    {
-      "file": "src/test/java/.../XxxServiceTest.java",
-      "line": 30,
-      "severity": "Medium",
-      "description": "第 30 行使用 assertNotNull 断言返回值，但应 assertEquals 期望的字段值",
-      "suggestion": "替换为 assertEquals 精确断言"
-    }
-  ],
-  "test_results": "TEST RESULTS: 42/42 passed, 0 failed",
-  "fixed_issue_ids": ["15", "22"],
-  "exempt_issue_ids": ["18"],
-  "rejected_issue_ids": [{ "issue_id": "25", "reason": "不属于本维度管辖范围" }]
-}
-```
-
-- `severity`：Critical / High / Medium / Low / Info
-- `verified_task_ids`：产出完整的 task ID 列表
-- `failed_task_ids`：产出不完整的 task 列表（含原因）
-- `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
-- `passed`：是否通过本次 task review
-- `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
-- `rejected_issue_ids`：(可选) 驳回的豁免申请列表，每条含 `issue_id` 和 `reason`
 
 ## 工具调用边界
 

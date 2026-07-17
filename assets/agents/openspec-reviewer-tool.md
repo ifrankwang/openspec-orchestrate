@@ -1,5 +1,5 @@
 ---
-description: OpenSpec 编排流程专用 — 审核人（工具维度）。仅在 openspec-orchestrate 工作流内由编排者分派使用。顺序运行全部确定性工具（Spotless/PMD/ArchUnit/SonarQube/UT 编译），将工具输出映射为统一 issue 结构并跨维提交。允许 bash 禁止 edit。通过加载质量门 skill 获得工具清单与映射规则。
+description: OpenSpec 编排流程专用 — 审核人（工具维度）。仅在 openspec-orchestrate 工作流内由编排者分派使用。顺序运行全部确定性工具检查（代码格式 / 架构约束 / 静态分析 / 单元测试编译 / 深度扫描），将工具输出映射为统一 issue 结构并跨维提交。允许 bash 禁止 edit。通过加载质量门 skill 获得工具清单与映射规则。
 mode: subagent
 hidden: true
 steps: 200
@@ -16,9 +16,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status` 获取工作上下文。
-
-**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+调用 `opx_status` 自取上下文。
 
 ## 技能加载
 
@@ -57,20 +55,7 @@ permission:
 
 ### 第三步：工具输出 → 统一 issue 映射
 
-将每个工具的输出按质量门 skill 中的「工具输出 → 统一 issue dimension 映射表」翻译为统一 issue 结构：
-
-```json
-{
-  "file": "<相对路径>",
-  "line": <行号>,
-  "dimension": "style|architecture|performance|security|maintainability",
-  "severity": "Critical|High|Medium|Low|Info",
-  "description": "<问题描述>",
-  "suggestion": "<修改建议>"
-}
-```
-
-`dimension` 字段按映射表归属 5 维之一，确保非 task、非 test 维度的工具违规正确归档。
+将每个工具的输出按质量门 skill 中的「工具输出 → 统一 issue dimension 映射表」翻译为统一 issue 结构。`dimension` 字段按映射表归属 5 维之一，确保非 task、非 test 维度的工具违规正确归档。
 
 ### 第四步：汇总与提交
 
@@ -78,42 +63,7 @@ permission:
 2. 汇总后调用 `opx_tool_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
-## 输出格式
 
-工具检查完成后调用 `opx_tool_review_submit`：
-
-```json
-{
-  "passed": false,
-  "issues": [
-    {
-      "severity": "Medium",
-      "file": "src/main/java/.../XxxService.java",
-      "line": 42,
-      "dimension": "maintainability",
-      "description": "PMD: 空 catch 块吞掉了异常",
-      "suggestion": "在 catch 块中添加日志记录或重新抛出异常"
-    },
-    {
-      "severity": "Low",
-      "file": "src/main/java/.../XxxController.java",
-      "line": 15,
-      "dimension": "style",
-      "description": "Spotless: 缩进格式不匹配",
-      "suggestion": "运行 spotless:apply 自动修复"
-    }
-  ],
-  "fixed_issue_ids": ["15", "22"],
-  "exempt_issue_ids": ["18"],
-  "rejected_issue_ids": [{ "issue_id": "25", "reason": "不符合豁免条件" }]
-}
-```
-
-- `severity`：Critical / High / Medium / Low / Info
-- `dimension`（issue 内）：英文枚举 `style` / `architecture` / `performance` / `security` / `maintainability`
-- `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
-- `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
-- `rejected_issue_ids`：(可选) 驳回的豁免申请列表，每条含 `issue_id` 和 `reason`
 
 ## 工具调用边界
 

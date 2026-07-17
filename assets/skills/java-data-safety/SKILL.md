@@ -1,6 +1,6 @@
 ---
 name: java-data-safety
-description: 仅限 Java 后端开发场景。数据访问与外部集成安全规范——MyBatisPlus、POI、LangChain4j、文件上传、凭证管理。适用场景：安全审查（code-reviewer-security）、性能审查（code-reviewer-performance）、编写代码（backend-developer）。
+description: 仅限 Java 后端开发场景。数据访问与外部集成安全规范——MyBatisPlus、POI、LangChain4j、文件上传、凭证管理。适用场景：Phase 3 安全审查（code-reviewer-security）、Phase 3 性能审查（code-reviewer-performance）、Phase 2 编写代码（backend-developer）。
 ---
 
 ## MyBatisPlus 数据安全

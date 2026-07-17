@@ -14,9 +14,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-**开始任务前必须**：调用 `opx_status` 获取工作上下文。
-
-**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
+调用 `opx_status` 自取上下文。
 
 ## 技能加载
 
@@ -64,7 +62,7 @@ permission:
 
 ## 审查流程
 
-1. 调用 `opx_status` 获取 worktree 路径、diff 范围、本维度存量 issue 与豁免申请
+1. 调用 `opx_status` 获取上下文
 2. 审查本维度存量 issue 的修复情况——对 submitted 状态的 issue 用 `fixed_issue_ids` 标记 verified
 3. 审查本维度存量 open issue 和豁免申请：
    - 对豁免申请裁定 grant / reject（驳回须填原因）
@@ -88,33 +86,7 @@ changeId 通过 `opx_status` 获取：
 | AGENTS.md | 项目根目录 | 全文 |
 | application.yml | `src/main/resources/application.yml` + `application-dev.yml` + `application-prod.yml` | 全文 |
 
-## 输出格式
 
-审查完成后调用 `opx_quality_review_submit`：
-
-```json
-{
-  "passed": false,
-  "issues": [
-    {
-      "severity": "High",
-      "file": "src/main/resources/application-dev.yml",
-      "line": 20,
-      "dimension": "security",
-      "description": "log-requests: true 开启后可能在日志中输出客户贷款敏感信息",
-      "suggestion": "生产环境禁用请求/响应日志，或配置脱敏过滤器"
-    }
-  ],
-  "fixed_issue_ids": ["15", "22"],
-  "exempt_issue_ids": ["18", "25"],
-  "rejected_issue_ids": [{"issue_id": "18", "reason": "不符合豁免条件"}]
-}
-```
-
-- `dimension`（issue 内）：英文枚举 `security`
-- `fixed_issue_ids`：本轮确认本维度已修复的既有 issue ID 列表（可选）
-- `exempt_issue_ids`：可选：豁免裁定的 issue ID 列表
-- `rejected_issue_ids`：可选：驳回的 issue 列表（含驳回原因），格式 `[{"issue_id": "18", "reason": "不符合豁免条件"}]`
 
 ## 已知问题
 

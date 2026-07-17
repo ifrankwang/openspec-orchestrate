@@ -1,6 +1,6 @@
 ---
 name: java-api-conventions
-description: 仅限 Java 后端开发场景。接口层规范——Controller 写法、RESTful 路径、参数校验、Swagger 注解、统一返回 R<T>、异常响应体系（领域异常类 + GlobalExceptionHandler + HTTP 状态码映射 + 业务错误码）。适用场景：编写 Controller 或 DTO（backend-developer）、接口层规范审查（code-reviewer）、异常处理实现。当新增 REST 接口、设计异常类、或实现统一响应包装时使用。
+description: 仅限 Java 后端开发场景。接口层规范——Controller 写法、RESTful 路径、参数校验、Swagger 注解、统一返回 R<T>、异常响应体系（领域异常类 + GlobalExceptionHandler + HTTP 状态码映射 + 业务错误码）。适用场景：Phase 1 编写 Controller 或 DTO（backend-developer）、Phase 2 接口层规范审查（code-reviewer）、Phase 1 异常处理实现。当新增 REST 接口、设计异常类、或实现统一响应包装时使用。
 ---
 
 ## Controller 层规范

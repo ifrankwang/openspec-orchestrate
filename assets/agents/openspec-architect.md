@@ -16,14 +16,7 @@ permission:
 
 ## 调用工具自查（任务前必做）
 
-开始任何任务前：
-
-1. 调用 `opx_status` 获取上下文
-2. 根据当前阶段执行对应职责流程
-
 本 md 中已定义的规范需自行加载并遵守。
-
-**注意**：如果 `opx_status` 返回的内容首行为 `# ⛔ 阶段门禁`，说明当前阶段未轮到本角色执行，请立即结束会话，不要执行任何操作。
 
 ## 技能加载
 
@@ -64,7 +57,7 @@ permission:
 - 关键坑位提醒（本组特有陷阱，避免重复 AGENTS.md 项目通用坑位）
 - 组件复用指引（本组范围内可复用的既有实现）
 - 设计约束的边缘场景说明（design.md 未展开但影响实施的边界条件）
-- 框架应用说明（如需用 MapStruct 做对象转换等框架用法提示）
+- 框架应用说明（如对象映射框架使用要点）
 - 通用做法指引：识别任务中是否已存在通用做法（如文件类型拦截、权限身份抽取等），有则注明 dev 须遵循现有做法（任务明确要求换做法除外）；无现成但判断应做成通用做法的，注明拓展性要求
 - 无补充信息时留空（`""`）
 
@@ -77,23 +70,4 @@ permission:
 - **工具调用边界**：仅可调用 `opx_arch_submit` 与 `opx_status`。完成复核后必须调用 `opx_arch_submit`。
 - **只审当前任务组范围**：除"任务排列合理性"需阅览全部任务组标题外，其它检查聚焦当前任务组直接相关的文档章节。
 
-## 输出格式
 
-完成复核后调用 `opx_arch_submit`，传入：
-
-```json
-{
-  "outcome": "ready",
-  "execution_boundary": {
-    "allowed_directories": [
-      "src/main/java/cn/com/ey/fso/loanreview/infrastructure/excel",
-      "src/test/java/cn/com/ey/fso/loanreview/infrastructure/excel"
-    ],
-    "allowed_packages": ["cn.com.ey.fso.loanreview.infrastructure.excel"],
-    "notes": "<实施建议：关键坑位、组件复用、边缘场景、框架应用（如 MapStruct）；通用做法指引；不含目录/包路径，无则留空>"
-  }
-}
-```
-
-- `outcome=ready` 时提供 `execution_boundary`。
-- `outcome=awaiting_user` 时提供 `blockers`：每项含 `source_role`、`task_id`、`category`、`description`、`evidence`、`attempted_actions`、`options`。

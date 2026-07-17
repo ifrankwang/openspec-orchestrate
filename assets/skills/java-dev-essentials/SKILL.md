@@ -1,6 +1,6 @@
 ---
 name: java-dev-essentials
-description: 仅限 Java 后端开发场景。项目开发基础——构建命令、代码质量、测试、日志、提交规范。适用场景：编写代码（backend-developer）、测试审查（test-engineer）、任务验证（task-verifier）、规范审查（code-reviewer-style）。
+description: 仅限 Java 后端开发场景。项目开发基础——构建命令、代码质量、测试、日志、提交规范。适用场景：Phase 2 编写代码（backend-developer）、Phase 2 测试审查（test-engineer）、Phase 3 任务验证（task-verifier）、Phase 3 规范审查（code-reviewer-style）。
 ---
 
 ## 构建命令

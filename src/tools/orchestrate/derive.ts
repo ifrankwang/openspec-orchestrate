@@ -110,7 +110,6 @@ export function assertAgent(context: { agent: string }, toolName: string, allowe
 }
 
 export function deriveCurrentAgents(tg: TaskGroupState): string[] {
-  if (tg.blockers.some((blocker) => blocker.status === "awaiting_user")) return []
   if (tg.status === "task_analysis") return ["openspec-architect"]
   if (tg.status === "dev_impl") return tg.worktreePath && tg.baseRef ? ["openspec-developer"] : []
   if (tg.status === "review") {

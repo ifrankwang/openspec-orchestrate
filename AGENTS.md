@@ -86,6 +86,10 @@ opx_status 视图等工具产出的上下文文本不得硬编码技术栈名称
 
 agent 之间职责边界必须清晰明确，禁止不同 agent 负责同一职责。发现职责重叠时，合并到单一 agent 或重新划分边界。
 
+### 工具返回体须为 markdown 格式
+
+opx_* 工具返回体必须是 markdown 格式（列表、段落），不得使用 JSON.stringify() 返回纯 JSON。
+
 ## 测试
 
 ```bash

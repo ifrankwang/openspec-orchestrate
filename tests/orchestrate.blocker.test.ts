@@ -3,10 +3,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path"
 import {
   __setGitRunner,
+  arch_blocker,
   arch_submit,
   dev_submit,
   init,
-  resume_blocker,
   set_worktree,
   status,
 } from "../src/tools/orchestrate"
@@ -36,7 +36,7 @@ function boundary() {
 }
 
 describe("blocker 生命周期", () => {
-  test("architect 预检阻塞后等待用户，恢复时复用 worktree 并重开 task/review", async () => {
+  test("architect 创建 blocker → arch_blocker 更新 → arch_submit ready", async () => {
     const root = `/tmp/blocker-arch-${Date.now()}`
     const wt = freshWt(root)
     __setGitRunner(new FakeGitRunner())
@@ -44,8 +44,7 @@ describe("blocker 生命周期", () => {
     const arch = makeCtx("openspec-architect", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, orch)
-    const blocked = JSON.parse(output(await arch_submit.execute({
-      outcome: "awaiting_user",
+    const createResult = output(await arch_blocker.execute({
       blockers: [{
         source_role: "openspec-architect",
         task_id: "1",
@@ -55,32 +54,33 @@ describe("blocker 生命周期", () => {
         attempted_actions: "检查 spec",
         options: ["用户提供地址"],
       }],
-    } as any, arch)))
-    expect(blocked.outcome).toBe("awaiting_user")
+    } as any, arch))
+    expect(createResult).toContain("已记录 1 个 blocker")
 
     let tg = readState(wt).taskGroups[0]
     expect(tg.blockers).toHaveLength(1)
     expect(tg.blockers[0].status).toBe("awaiting_user")
-    expect(await status.execute({}, orch)).toContain("等待用户")
-    expect(await status.execute({}, arch)).toContain("# ⛔ 阶段门禁")
 
-    await resume_blocker.execute({ blocker_id: tg.blockers[0].id, user_response: "地址为 https://api.example.test" }, orch)
-    await expect(resume_blocker.execute({ blocker_id: tg.blockers[0].id, user_response: "重复答复" }, orch)).rejects.toThrow(/awaiting_user/)
-    tg = readState(wt).taskGroups[0]
-    expect(tg.blockers[0].status).toBe("ready_for_architect")
-    expect(tg.blockers[0].userResponse).toBe("地址为 https://api.example.test")
-    expect(await status.execute({}, orch)).toContain("openspec-architect")
-    const architectContext = await status.execute({}, arch)
-    expect(architectContext).toContain("Blocker #b1 | ready_for_architect | external_dependency")
+    const architectContext = output(await status.execute({}, arch))
+    expect(architectContext).toContain("Blocker #b1 | awaiting_user | external_dependency")
     expect(architectContext).toContain("描述：缺少外部接口地址")
     expect(architectContext).toContain("证据：spec 未提供")
     expect(architectContext).toContain("已尝试：检查 spec")
     expect(architectContext).toContain("可选方案：用户提供地址")
-    expect(architectContext).toContain("用户答复：地址为 https://api.example.test")
-    expect(architectContext).toContain("outcome=ready` 或 `outcome=awaiting_user")
     expect(architectContext).not.toContain("passed=true")
 
-    await arch_submit.execute({ outcome: "ready", execution_boundary: boundary(), blockers: [] } as any, arch)
+    const updateResult = output(await arch_blocker.execute({
+      blocker_id: tg.blockers[0].id,
+      user_response: "地址为 https://api.example.test",
+    } as any, arch))
+    expect(updateResult).toContain("blocker #b1 已处理")
+    expect(updateResult).toContain("全部 blocker 已处理")
+
+    tg = readState(wt).taskGroups[0]
+    expect(tg.blockers[0].status).toBe("resolved")
+    expect(tg.blockers[0].userResponse).toBe("地址为 https://api.example.test")
+
+    await arch_submit.execute({ outcome: "ready", execution_boundary: boundary() } as any, arch)
     tg = readState(wt).taskGroups[0]
     expect(tg.status).toBe("dev_impl")
     expect(tg.blockers[0].status).toBe("resolved")
@@ -106,7 +106,7 @@ describe("blocker 生命周期", () => {
     await arch_submit.execute({ outcome: "ready", execution_boundary: boundary() } as any, arch)
     await set_worktree.execute({}, orch)
 
-    const developerContext = await status.execute({}, dev)
+    const developerContext = output(await status.execute({}, dev))
     expect(developerContext).toContain("outcome=completed` 或 `outcome=blocked")
     expect(developerContext).not.toContain("passed=true")
     rmSync(root, { recursive: true, force: true })
@@ -122,7 +122,7 @@ describe("blocker 生命周期", () => {
     const dev = makeCtx("openspec-developer", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, orch)
-    await arch_submit.execute({ outcome: "ready", execution_boundary: boundary(), blockers: [] } as any, arch)
+    await arch_submit.execute({ outcome: "ready", execution_boundary: boundary() }, arch)
     await set_worktree.execute({}, orch)
     let state = readState(wt)
     let tg = state.taskGroups[0]
@@ -150,6 +150,7 @@ describe("blocker 生命周期", () => {
     expect(tg.phases.review.retryCount).toBe(2)
     expect(tg.phases.review.lastResolvedRetryCount).toBe(1)
     expect(tg.phases.review.tool.completed).toBe(false)
+    expect(tg.blockers[0].status).toBe("awaiting_user")
     rmSync(root, { recursive: true, force: true })
   })
 
@@ -163,7 +164,7 @@ describe("blocker 生命周期", () => {
       const dev = makeCtx("openspec-developer", wt)
 
       await init.execute({ change_id: CID, task_group_id: "1" }, orch)
-      await arch_submit.execute({ outcome: "ready", execution_boundary: boundary(), blockers: [] } as any, arch)
+      await arch_submit.execute({ outcome: "ready", execution_boundary: boundary() }, arch)
       await set_worktree.execute({}, orch)
       let tg = readState(wt).taskGroups[0]
       tg.phases.review.retryCount = 2
@@ -197,7 +198,7 @@ describe("blocker 生命周期", () => {
       tg = readState(wt).taskGroups[0]
       expect(tg.status).toBe("task_analysis")
       expect(tg.phases.architect_review.completed).toBe(false)
-      expect(tg.blockers[0].status).toBe("reported")
+      expect(tg.blockers[0].status).toBe("awaiting_user")
       expect(tg.worktreePath).toBe(worktreePath)
       expect(tg.phases.review.retryCount).toBe(2)
       expect(tg.phases.review.lastResolvedRetryCount).toBe(1)
@@ -210,7 +211,7 @@ describe("blocker 生命周期", () => {
     }
   })
 
-  test("blocked 参数、dirty worktree、重复恢复均拒绝", async () => {
+  test("blocked 参数、dirty worktree、更新已 resolved blocker 拒绝", async () => {
     const root = `/tmp/blocker-guard-${Date.now()}`
     const wt = freshWt(root)
     const fakeGit = new FakeGitRunner()
@@ -220,7 +221,7 @@ describe("blocker 生命周期", () => {
     const dev = makeCtx("openspec-developer", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, orch)
-    await arch_submit.execute({ outcome: "ready", execution_boundary: boundary(), blockers: [] } as any, arch)
+    await arch_submit.execute({ outcome: "ready", execution_boundary: boundary() }, arch)
     await set_worktree.execute({}, orch)
     const devWt = readState(wt).taskGroups[0].worktreePath
     fakeGit.dirtyPaths.add(devWt)
@@ -232,12 +233,13 @@ describe("blocker 生命周期", () => {
       source_role: "openspec-developer", task_id: "1", category: "credential", description: "缺凭证", evidence: "env 无值", attempted_actions: "检查 env", options: ["用户提供凭证"],
     } }) as any, dev)
     const blockerId = readState(wt).taskGroups[0].blockers[0].id
-    await expect(resume_blocker.execute({ blocker_id: blockerId, user_response: "已提供" }, orch)).rejects.toThrow(/awaiting_user/)
+    await arch_blocker.execute({ blocker_id: blockerId, user_response: "已提供" } as any, arch)
+    await expect(arch_blocker.execute({ blocker_id: blockerId, user_response: "重复" } as any, arch)).rejects.toThrow(/awaiting_user/)
     expect(devWt).toBe(readState(wt).taskGroups[0].worktreePath)
     rmSync(root, { recursive: true, force: true })
   })
 
-  test("多个 blocker 全部恢复后才能由架构师进入开发", async () => {
+  test("多个 blocker 全部处理后才能由架构师 arch_submit ready", async () => {
     const root = `/tmp/blocker-many-${Date.now()}`
     const wt = freshWt(root)
     __setGitRunner(new FakeGitRunner())
@@ -245,14 +247,16 @@ describe("blocker 生命周期", () => {
     const arch = makeCtx("openspec-architect", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, orch)
-    await arch_submit.execute({ outcome: "awaiting_user", blockers: [
-      { source_role: "openspec-architect", task_id: "1", category: "credential", description: "凭证", evidence: "缺失", attempted_actions: "检查 env", options: ["提供凭证"] },
-      { source_role: "openspec-architect", task_id: "1", category: "external_dependency", description: "地址", evidence: "缺失", attempted_actions: "检查 spec", options: ["提供地址"] },
-    ] } as any, arch)
+    await arch_blocker.execute({
+      blockers: [
+        { source_role: "openspec-architect", task_id: "1", category: "credential", description: "凭证", evidence: "缺失", attempted_actions: "检查 env", options: ["提供凭证"] },
+        { source_role: "openspec-architect", task_id: "1", category: "external_dependency", description: "地址", evidence: "缺失", attempted_actions: "检查 spec", options: ["提供地址"] },
+      ],
+    } as any, arch)
     const blockers = readState(wt).taskGroups[0].blockers
-    await resume_blocker.execute({ blocker_id: blockers[0].id, user_response: "已提供凭证" }, orch)
+    await arch_blocker.execute({ blocker_id: blockers[0].id, user_response: "已提供凭证" } as any, arch)
     await expect(arch_submit.execute({ outcome: "ready", execution_boundary: boundary() } as any, arch)).rejects.toThrow(/awaiting_user/)
-    await resume_blocker.execute({ blocker_id: blockers[1].id, user_response: "已提供地址" }, orch)
+    await arch_blocker.execute({ blocker_id: blockers[1].id, user_response: "已提供地址" } as any, arch)
     await arch_submit.execute({ outcome: "ready", execution_boundary: boundary() } as any, arch)
     expect(readState(wt).taskGroups[0].blockers.every((blocker: any) => blocker.status === "resolved")).toBe(true)
     rmSync(root, { recursive: true, force: true })
@@ -270,11 +274,11 @@ describe("blocker 生命周期", () => {
     delete legacy.taskGroups[0].blockers
     writeFileSync(join(wt, ".opencode", ".orchestrate_state", `${CID}.json`), JSON.stringify(legacy, null, 2))
 
-    const output = await status.execute({}, orch)
-    expect(output).toContain("**当前阶段**: dev_impl")
-    expect(output).toContain("opx_orch_set_worktree")
-    expect(output).not.toContain("openspec-developer")
-    expect(output).not.toContain("recovery")
+    const outputStr = output(await status.execute({}, orch))
+    expect(outputStr).toContain("**当前阶段**: dev_impl")
+    expect(outputStr).toContain("opx_orch_set_worktree")
+    expect(outputStr).not.toContain("openspec-developer")
+    expect(outputStr).not.toContain("recovery")
     rmSync(root, { recursive: true, force: true })
   })
 })

@@ -37,10 +37,9 @@ function resetForBlocker(tg: TaskGroupState): void {
 
 export const arch_submit = tool({
   description:
-    "架构师提交预检结果。outcome=ready 时提交执行边界；outcome=awaiting_user 时提交 blocker。",
+    "架构师提交预检结果。仅 outcome=ready，所有 blocker 需先通过 opx_arch_blocker 处理。",
   args: {
-    outcome: tool.schema.enum(["ready", "awaiting_user"]),
-    blockers: tool.schema.array(blockerItem).optional(),
+    outcome: tool.schema.enum(["ready"]),
     execution_boundary: executionBoundarySchema.optional(),
   },
   async execute(args, context) {
@@ -52,31 +51,13 @@ export const arch_submit = tool({
       throw new Error(`阶段顺序错误：task_analysis 当前不在活跃阶段，当前阶段为 "${tg.status}"。`)
     }
     if (Object.hasOwn(args, "passed")) {
-      throw new Error("opx_arch_submit 不接受 passed 参数；必须提供 outcome=ready 或 awaiting_user。")
-    }
-    const outcome = args.outcome
-    const blockers = (args.blockers || []) as any[]
-    if (outcome === "awaiting_user") {
-      if (blockers.length === 0) throw new Error("outcome=awaiting_user 时必须提供至少一个 blocker。")
-      addBlockers(tg, blockers.map((blocker) => ({
-        sourceRole: blocker.source_role, taskId: blocker.task_id || null, category: blocker.category,
-        description: blocker.description, evidence: blocker.evidence, attemptedActions: blocker.attempted_actions,
-        options: blocker.options || [],
-      })), "awaiting_user")
-      await writeState(context.worktree, state)
-      return JSON.stringify({ status: "blocked", outcome, blocker_count: blockers.length, message: "架构预检暂停，职责已完成，请立即结束当前会话。" })
+      throw new Error("opx_arch_submit 不接受 passed 参数；必须提供 outcome=ready。")
     }
     if (!args.execution_boundary) throw new Error("outcome=ready 时必须提供 execution_boundary。")
     if (tg.blockers.some((blocker) => blocker.status === "awaiting_user")) {
-      throw new Error("仍有 awaiting_user blocker，无法提交 outcome=ready。")
+      throw new Error("存在 awaiting_user blocker，请先用 opx_arch_blocker 逐个处理后再提交 outcome=ready。")
     }
     tg.executionBoundary = args.execution_boundary
-    for (const blocker of tg.blockers) {
-      if (blocker.status === "reported" || blocker.status === "ready_for_architect") {
-        blocker.status = "resolved"
-        blocker.architectConclusion = "架构预检已处理。"
-      }
-    }
     const parsedTasks = await parseTasksMdForGroup(context.worktree, state.changeId, state.taskGroupId)
     tg.tasks = parsedTasks.map((task, index) => ({ id: String(index + 1), specTrace: task.specTrace, title: task.title, status: "open", taskNumber: task.taskNumber, rejectReason: null }))
     tg.relevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
@@ -116,6 +97,80 @@ export const arch_submit = tool({
   },
 })
 
+export const arch_blocker = tool({
+  description: "架构师记录/更新 blocker，不结束本环节。创建 mode 入库 awaiting_user；更新 mode 写入 user_response 并置 resolved。",
+  args: {
+    blocker_id: tool.schema.string().optional().describe("提供=更新模式；不提供=创建模式"),
+    blockers: tool.schema.array(blockerItem).optional().describe("创建模式：新增 blocker 列表"),
+    user_response: tool.schema.string().optional().describe("用户答复。创建模式有则立即 resolved；更新模式必传"),
+  },
+  async execute(args, context) {
+    assertAgent(context, "opx_arch_blocker", ["openspec-architect"])
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    const tg = findTaskGroup(state, state.taskGroupId)
+    if (tg.status !== "task_analysis") {
+      throw new Error(`opx_arch_blocker 仅在 task_analysis 阶段可用，当前阶段为 "${tg.status}"。`)
+    }
+
+    const isUpdate = !!args.blocker_id
+    const userResponse = args.user_response || null
+
+    if (isUpdate) {
+      if (!userResponse) throw new Error("更新模式必须提供 user_response。")
+      const blocker = tg.blockers.find(b => b.id === args.blocker_id)
+      if (!blocker) throw new Error(`blocker #${args.blocker_id} 不在任务组 ${tg.id} 中。`)
+      if (blocker.status !== "awaiting_user") throw new Error(`blocker #${args.blocker_id} 状态不是 awaiting_user，无法更新。`)
+      blocker.userResponse = userResponse
+      blocker.status = "resolved"
+      await writeState(context.worktree, state)
+
+      const remaining = tg.blockers.filter(b => b.status !== "resolved").length
+      const lines = [`- blocker #${args.blocker_id} 已处理`]
+      if (remaining > 0) {
+        lines.push(`- 剩余 ${remaining} 个 awaiting_user blocker 待处理`)
+      } else {
+        lines.push("- 全部 blocker 已处理，可提交 opx_arch_submit(outcome=ready)")
+      }
+      return lines.join("\n")
+    } else {
+      const blockersRaw = (args.blockers || []) as any[]
+      if (blockersRaw.length === 0) throw new Error("创建模式必须提供至少一个 blocker。")
+
+      const count = blockersRaw.length
+      addBlockers(tg, blockersRaw.map(b => ({
+        sourceRole: b.source_role, taskId: b.task_id || null, category: b.category,
+        description: b.description, evidence: b.evidence, attemptedActions: b.attempted_actions,
+        options: b.options || [],
+      })), "awaiting_user")
+
+      if (userResponse) {
+        const newBlockers = tg.blockers.slice(-count)
+        for (const b of newBlockers) {
+          b.userResponse = userResponse
+          b.status = "resolved"
+        }
+      }
+
+      await writeState(context.worktree, state)
+
+      const remaining = tg.blockers.filter(b => b.status !== "resolved").length
+      const lines = [`- 已记录 ${count} 个 blocker`]
+      if (count > 0 && userResponse) lines[0] = `- 已记录 ${count} 个 blocker（含用户答复，已处理）`
+      if (remaining > 0) {
+        lines.push(`- 剩余 ${remaining} 个 awaiting_user blocker 待处理`)
+        const awaitingBlockers = tg.blockers.filter(b => b.status !== "resolved")
+        for (const b of awaitingBlockers) {
+          lines.push(`  - blocker ${b.id}: ${b.description}`)
+        }
+      } else {
+        lines.push("- 全部 blocker 已处理，可提交 opx_arch_submit(outcome=ready)")
+      }
+      return lines.join("\n")
+    }
+  },
+})
+
 export const dev_submit = tool({
   description:
     "developer 提交实现结果。outcome=completed 提交实现；outcome=blocked 上报 blocker。",
@@ -148,7 +203,7 @@ export const dev_submit = tool({
         sourceRole: blocker.source_role, taskId: blocker.task_id || null, category: blocker.category,
         description: blocker.description, evidence: blocker.evidence, attemptedActions: blocker.attempted_actions,
         options: blocker.options || [],
-      }], "reported")
+      }], "awaiting_user")
       resetForBlocker(tg)
       tg.status = "task_analysis"
       await writeState(context.worktree, state)

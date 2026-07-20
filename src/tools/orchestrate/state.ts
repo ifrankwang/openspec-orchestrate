@@ -57,6 +57,11 @@ export async function readStateByChangeId(worktree: string, changeId: string): P
   }
   for (const group of state.taskGroups || []) {
     group.blockers ??= []
+    for (const blocker of group.blockers) {
+      if ((blocker.status as string) === "reported" || (blocker.status as string) === "ready_for_architect") {
+        blocker.status = "awaiting_user"
+      }
+    }
     // 已完成架构复核的旧状态曾停留在 task_analysis；归一到开发阶段。
     if (group.status === "task_analysis" && group.phases?.architect_review?.completed && !group.blockers.some((blocker) => blocker.status !== "resolved")) {
       group.status = "dev_impl"

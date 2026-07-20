@@ -344,28 +344,6 @@ export const set_worktree = tool({
   },
 })
 
-export const resume_blocker = tool({
-  description: "编排者记录用户对 blocker 的原话，交架构师复核。",
-  args: {
-    blocker_id: tool.schema.string().min(1),
-    user_response: tool.schema.string().min(1),
-  },
-  async execute(args, context) {
-    assertOrchestrator(context, "opx_orch_resume_blocker")
-    const state = await readStateByWorktree(context.worktree)
-    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
-    const tg = findTaskGroup(state, state.taskGroupId)
-    const blocker = tg.blockers.find((item) => item.id === args.blocker_id)
-    if (!blocker) throw new Error(`blocker #${args.blocker_id} 不在任务组 ${tg.id} 中。`)
-    if (blocker.status !== "awaiting_user") throw new Error(`blocker #${args.blocker_id} 当前不是 awaiting_user，不能恢复。`)
-    blocker.userResponse = args.user_response
-    blocker.status = "ready_for_architect"
-    tg.status = "task_analysis"
-    await writeState(context.worktree, state)
-    return JSON.stringify({ status: "ok", blocker_id: blocker.id, blocker_status: blocker.status, message: "用户答复已记录。" })
-  },
-})
-
 export const status = tool({
   description:
     "统一只读状态/上下文查询。按调用者角色路由：orchestrator→统计+worktree；architect→spec/blocker；developer→worktree/boundary/task/issue；reviewer-tool→tool 层控件 issue；reviewer-task→task 验证状态；quality reviewer→自维度存量 issue。",
@@ -427,7 +405,7 @@ export const status = tool({
     if (agent !== ORCHESTRATOR_AGENT) {
       const submitTool = AGENT_TO_SUBMIT_TOOL[agent] || "对应 submit 工具"
       const submitConvention = agent === "openspec-architect"
-        ? "按结果提交 `outcome=ready` 或 `outcome=awaiting_user`。"
+        ? "按结果提交 `outcome=ready`；blocker 用 `opx_arch_blocker` 处理。"
         : agent === "openspec-developer"
           ? "按结果提交 `outcome=completed` 或 `outcome=blocked`。"
           : "即使无 issue / 无待处理项，也必须提交 `passed=true`。"

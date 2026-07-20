@@ -208,8 +208,6 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
         lines.push("（无待分派项，请检查状态）")
       }
     }
-  } else if (tg.blockers.some((blocker) => blocker.status === "awaiting_user")) {
-    lines.push("等待用户答复 blocker。")
   } else if (tg.status === "dev_impl" && (!tg.worktreePath || !tg.baseRef)) {
     lines.push("资源未就绪：调用 `opx_orch_set_worktree`。")
   } else {
@@ -281,9 +279,9 @@ lines.push(`- \`openspec/changes/${state.changeId}/\``)
   lines.push("   - 实施所需信息是否齐备？（模板路径/字段映射/外部依赖决策等）")
   lines.push("   - 接口/模型是否与 design 冲突？")
   lines.push("   - 任务排列是否合理？（基础架构类任务应在更早完成）")
-  lines.push("4. 可本地修复的问题（仅限 md 文件）→ edit；信息缺口 → opx_arch_submit(outcome=\"awaiting_user\")")
+  lines.push("  4. 可本地修复的问题（仅限 md 文件）→ edit；信息缺口 → opx_arch_blocker")
   lines.push("5. 识别任务中是否已存在通用做法（识别方式见项目 AGENTS.md/CLAUDE.md）：有则注明 dev 须遵循现有做法（任务明确要求换做法除外）；无但判断应做成通用做法的，在 notes 注明拓展性要求")
-  lines.push("6. 复核上方「Blocker (待架构复核)」中 ready_for_architect 项（结合用户答复裁定）；opx_arch_submit(outcome=ready) 自动结案 reported/ready_for_architect blocker")
+  lines.push("  6. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理（user_response+blocker_id），缺用户答复用 question 工具收集")
   lines.push("7. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")")
   return lines.join("\n")
 }

@@ -45,7 +45,7 @@ export interface IssueItem {
   rejectReason: string | null
 }
 
-export type BlockerStatus = "reported" | "awaiting_user" | "ready_for_architect" | "resolved"
+export type BlockerStatus = "awaiting_user" | "resolved"
 
 export interface BlockerItem {
   id: string

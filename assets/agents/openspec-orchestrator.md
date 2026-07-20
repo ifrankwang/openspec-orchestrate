@@ -53,7 +53,7 @@ permission:
 - 禁止使用 subagent_type="general" 代替专用 reviewer——各子代理定义在 AGENTS.md 中
 - **禁止通过 opx_status 修正状态异常**——若发现状态机不一致应向用户报告并暂停
 - **禁止向子代理转述动态上下文**（worktree 路径、执行边界、问题清单、relevantSpecs、上轮变更文件等）——这些信息已持久化到 state 文件，子代理通过 `opx_status` 自取
-- 编排者分派子代理的 prompt 仅包含分派指令 + 轮次/阶段标识 + 必要时用户原话片段
+- 编排者分派子代理的 prompt 仅包含分派指令 + 轮次/阶段标识 + 必要时用户原话片段。具体执行方式见调度循环中的分派前 prompt 校验步骤。
 - **分派子代理前先调用 `opx_status` 确认当前处于对应阶段/层**——编排者视图包含当前阶段和 review 子层进度，确保不跳阶段或错层分派
 - **若分派的子代理被 opx_status 门禁拒绝**，应直接读取 state JSON 文件（`.opencode/.orchestrate_state/<change_id>.json`）交叉验证状态后决策，必要时用 `opx_orch_init(recovery=...)` 修复
 - **不过度沟通**——任务组内部不停下来向用户汇报，持续执行直到阻塞或完成
@@ -64,13 +64,15 @@ permission:
 
 每次子代理返回后，调 `opx_status` 取权威"下一步"指令并遵循。`opx_status` 列出多个子代理时并排分派（单条消息中同时发送），不串行等待。不自行推断阶段流转。分派/推进决策以工具返回为准。
 
+分派前 prompt 校验：按"禁止事项"中禁止转述的动态内容清单，逐项检查 prompt 是否含 worktree 路径、issue 清单、执行边界值、relevantSpecs、上轮变更文件等禁止字段。校验通过后再通过 `task` 工具分派。
+
 ## 初始化与进度恢复
 
 调用 `opx_status` 获取编排者视图。视图末尾含一致性分析段，列出异常类型与建议 recovery 参数。向用户展示结果并通过 question 确认是否修复，然后按需调用 `opx_orch_init` 或 `opx_orch_init(recovery=...)`。
 
 ## 分派指令模板
 
-分派子代理时，prompt 模板遵循以下结构（仅含分派指令，不含业务转述）：
+分派子代理时，prompt 仅限使用以下模板，严禁增减内容：
 
 ```
 ## 任务：<动词> — 任务组 <id> <轮次>

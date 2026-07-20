@@ -128,7 +128,7 @@ describe("修复项2+3: dev_submit / task_review_submit verified 清除 rejectRe
     await set_worktree.execute({}, o)
     const devWt = readStateSync(wt).taskGroups.find((g: any) => g.id === "1").worktreePath
     fakeGit.diffs.set(devWt, ["src/T.java"])
-    await dev_submit.execute({}, d)
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
     let state = readStateSync(wt)
     let tg = state.taskGroups.find((g: any) => g.id === "1")
@@ -150,7 +150,7 @@ describe("修复项2+3: dev_submit / task_review_submit verified 清除 rejectRe
     expect(t1AfterReject.status).toBe("rejected")
     expect(t1AfterReject.rejectReason).toBe("Incomplete")
 
-    await dev_submit.execute({}, d)
+    await dev_submit.execute({ completed_task_ids: ["1"] }, d)
 
     state = readStateSync(wt)
     const t1AfterDev = state.taskGroups.find((g: any) => g.id === "1").tasks.find((t: any) => t.id === "1")

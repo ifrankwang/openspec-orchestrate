@@ -58,7 +58,7 @@ async function setupThroughDevSubmit(
   const state = readStateSync(wt, CID)
   const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
   fakeGit.diffs.set(devWt, ["src/F1.java", "src/F2.java"])
-  await dev_submit.execute({}, d)
+  await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
   return { orch: o, arch: a, dev: d }
 }
 
@@ -79,7 +79,7 @@ async function setupThroughReviewReady(
   let state = readStateSync(wt, CID)
   const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
   fakeGit.diffs.set(devWt, ["src/F1.java"])
-  await dev_submit.execute({}, d)
+  await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
   const s1 = readStateSync(wt, CID)
   const tg1 = s1.taskGroups.find((g: any) => g.id === "1")
@@ -372,7 +372,7 @@ describe("B2. Recovery 自动补非空 executionBoundary", () => {
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     const devWt = tg.worktreePath
     fakeGit.diffs.set(devWt, ["src/F1.java"])
-    await dev_submit.execute({}, makeCtx("openspec-developer", wt))
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, makeCtx("openspec-developer", wt))
 
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
@@ -412,7 +412,7 @@ describe("B2. Recovery 自动补非空 executionBoundary", () => {
     const tg = state.taskGroups.find((g: any) => g.id === "1")
     const devWt = tg.worktreePath
     fakeGit.diffs.set(devWt, ["src/main/Foo.java"])
-    await dev_submit.execute({}, d)
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
     // null out executionBoundary
     state = readStateSync(wt, CID)
@@ -434,7 +434,7 @@ describe("B2. Recovery 自动补非空 executionBoundary", () => {
     expect(tgFill.executionBoundary).not.toBeNull()
 
     // dev submit 再次进入 review
-    await dev_submit.execute({}, d)
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
     state = readStateSync(wt, CID)
     const tg2 = state.taskGroups.find((g: any) => g.id === "1")
@@ -616,7 +616,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     let state = readStateSync(wt, CID)
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
     fakeGit.diffs.set(devWt, ["src/F1.java"])
-    await dev_submit.execute({}, d)
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
@@ -680,7 +680,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     let state = readStateSync(wt, CID)
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
     fakeGit.diffs.set(devWt, ["src/F1.java"])
-    await dev_submit.execute({}, d)
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
@@ -762,7 +762,7 @@ describe("B3. Recovery review_layer 子阶段参数", () => {
     let state = readStateSync(wt, CID)
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
     fakeGit.diffs.set(devWt, ["src/F1.java"])
-    await dev_submit.execute({}, d)
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
@@ -827,7 +827,7 @@ describe("B4. 空 issue 正常提交回归", () => {
     let state = readStateSync(wt, CID)
     const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
     fakeGit.diffs.set(devWt, ["src/F1.java"])
-    await dev_submit.execute({}, makeCtx("openspec-developer", wt))
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, makeCtx("openspec-developer", wt))
 
     state = readStateSync(wt, CID)
     const tg = state.taskGroups.find((g: any) => g.id === "1")
@@ -894,7 +894,7 @@ describe("B5. dev_submit 不再重置 retryCount", () => {
 
     // 2. developer 修复并提交
     fakeGit.diffs.set(devWt, ["src/F1.java"])
-    await dev_submit.execute({ fixed_issue_ids: [issueId] }, dev)
+    await dev_submit.execute({ completed_task_ids: ["1", "2"], fixed_issue_ids: [issueId] }, dev)
 
     state = readStateSync(wt, CID)
     const tgAfter = state.taskGroups.find((g: any) => g.id === "1")

@@ -176,6 +176,7 @@ export const dev_submit = tool({
     "developer 提交实现结果。outcome=completed 提交实现；outcome=blocked 上报 blocker。",
   args: {
     outcome: tool.schema.enum(["completed", "blocked"]).optional(),
+    completed_task_ids: tool.schema.array(tool.schema.string()).optional().describe("已完成的 task ID 列表"),
     blocker: blockerItem.optional(),
     fixed_issue_ids: tool.schema.array(tool.schema.string()).optional().describe("确认修复的 issue ID 列表"),
     request_exempts: tool.schema.array(requestExemptItem).optional().describe("不可修的 issue 申请豁免"),
@@ -213,19 +214,37 @@ export const dev_submit = tool({
 
     let requiredDims: ReviewDimension[] = []
 
-    for (const task of tg.tasks) {
-      if (task.status === "open" || task.status === "rejected") {
+    if (!args.completed_task_ids || args.completed_task_ids.length === 0) {
+      throw new Error("outcome=completed 时必须提供 completed_task_ids，列出已完成的 task ID。")
+    }
+
+    const validIds = new Set(tg.tasks.map((t) => t.id))
+    for (const id of args.completed_task_ids) {
+      if (!validIds.has(id)) {
+        const sortedIds = Array.from(validIds).sort((a, b) => Number(a) - Number(b))
+        throw new Error(
+          `completed_task_ids 中包含无效 task id: "${id}"。有效的 task ID 为: ${sortedIds.join(", ")}`
+        )
+      }
+    }
+
+    const completedSet = new Set(args.completed_task_ids)
+    for (const id of args.completed_task_ids) {
+      const task = tg.tasks.find((t) => t.id === id)
+      if (task && (task.status === "open" || task.status === "rejected")) {
         task.status = "submitted"
         task.rejectReason = null
       }
     }
+
     const remainingTasks = tg.tasks.filter(
-      (t) => t.status === "open" || t.status === "rejected"
+      (t) => (t.status === "open" || t.status === "rejected") && !completedSet.has(t.id)
     )
     if (remainingTasks.length > 0) {
       throw new Error(
-        `存在 ${remainingTasks.length} 个 open/rejected task 未完成，无法提交：` +
-          remainingTasks.map((t) => `#${t.id} ${t.title}`).join("; ")
+        `以下 task 不在 completed_task_ids 中：` +
+        remainingTasks.map((t) => `#${t.id} ${t.title}`).join("\n") +
+        `。如需因阻塞无法完成，请改用 outcome="blocked" 提交 blocker。`
       )
     }
 

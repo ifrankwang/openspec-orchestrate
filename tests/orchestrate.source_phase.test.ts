@@ -70,7 +70,7 @@ async function setupToReview(root: string, wt: string, fakeGit: FakeGitRunner) {
   }, a)
   await set_worktree.execute({}, o)
   fakeGit.diffs.set(wt, ["src/T.java"])
-  await dev_submit.execute({}, d)
+  await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
 
   const state = readStateSync(wt)
   const tg = state.taskGroups.find((g: any) => g.id === "1")

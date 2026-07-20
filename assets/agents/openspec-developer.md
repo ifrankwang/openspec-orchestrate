@@ -105,7 +105,9 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 
 ## 最终提交（opx_dev_submit）
 
-完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit(outcome="completed")`。生产路径禁止用 stub、fake、空实现或硬编码成功替代验收。
+完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit(outcome="completed", completed_task_ids=["1", "2", ...])`，其中 `completed_task_ids` 列出本次提交已完成的 task ID。生产路径禁止用 stub、fake、空实现或硬编码成功替代验收。
+
+如有 task 因外部依赖或阻塞无法完成，改用 `opx_dev_submit(outcome="blocked", blocker=...)` 提交 blocker。
 
 ## 工具调用边界
 

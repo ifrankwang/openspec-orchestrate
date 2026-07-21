@@ -79,8 +79,8 @@ async function setupToReview(wt: string, fakeGit: FakeGitRunner) {
 
 // ── G1: set_worktree before arch_submit ──
 
-describe("G1. set_worktree 守卫", () => {
-  test("arch_submit 未完成时调用 set_worktree → throws", async () => {
+describe("G1. set_worktree 守卫已移除", () => {
+  test("init 后直接调 set_worktree → 成功", async () => {
     const root = `/tmp/guard-g1-${Date.now()}`
     const wt = setupWt(root, join(root, "w"))
     const fakeGit = new FakeGitRunner()
@@ -88,9 +88,33 @@ describe("G1. set_worktree 守卫", () => {
     const o = makeCtx("openspec-orchestrator", wt)
 
     await init.execute({ change_id: CID, task_group_id: "1" }, o)
-    await expect(set_worktree.execute({}, o)).rejects.toThrow(
-      /architect_review 完成后/
-    )
+    const result = JSON.parse(await set_worktree.execute({}, o))
+    expect(result.status).toBe("ok")
+    expect(result.worktree_path).toBeTruthy()
+    expect(result.base_ref).toBeTruthy()
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
+// ── G1.1: dev_submit worktree 守卫 ──
+
+describe("G1.1. dev_submit worktree 守卫", () => {
+  test("跳过 set_worktree 直接 dev_submit → throws", async () => {
+    const root = `/tmp/guard-g1-1-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+    const d = makeCtx("openspec-developer", wt)
+    const a = makeCtx("openspec-architect", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ outcome: "ready",
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await expect(
+      dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
+    ).rejects.toThrow(/worktree 或 baseRef/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

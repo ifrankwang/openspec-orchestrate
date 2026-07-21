@@ -281,9 +281,6 @@ export const set_worktree = tool({
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
     const tg = findTaskGroup(state, state.taskGroupId)
-    if (!tg.phases.architect_review.completed) {
-      throw new Error(`阶段顺序错误：opx_orch_set_worktree 需在 architect_review 完成后调用，当前 architect_review 阶段状态为 "uncompleted"。`)
-    }
 
     const repoRoot = context.worktree
     const branch = args.branch_name || `task-group/${state.taskGroupId}`

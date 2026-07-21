@@ -191,7 +191,7 @@ export const dev_submit = tool({
       throw new Error(`dev_submit 仅在 dev_impl 或 review 阶段可用，当前阶段为 "${tg.status}"。`)
     }
     if (!tg.worktreePath || !tg.baseRef) {
-      throw new Error("worktree 或 baseRef 未设置，请编排者先调用 opx_orch_set_worktree。")
+      throw new Error("worktree 或 baseRef 未设置。请结束当前会话，编排者将通过 opx_status 自动识别缺失资源并补充。")
     }
     const clean = await isWorktreeClean(tg.worktreePath)
     if (!clean) {

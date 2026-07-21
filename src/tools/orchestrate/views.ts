@@ -241,6 +241,9 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
   } else if (tg.status === "dev_impl" && (!tg.worktreePath || !tg.baseRef)) {
     lines.push("资源未就绪：调用 `opx_orch_set_worktree`。")
   } else {
+    if (!tg.worktreePath || !tg.baseRef) {
+      lines.push("资源未就绪：调用 `opx_orch_set_worktree`。")
+    }
     const agents = deriveCurrentAgents(tg)
     if (agents.length > 0) {
       const agentList = agents.map((a) => `\`${a}\``).join("、")

@@ -93,6 +93,7 @@ export interface TaskGroupState {
   executionBoundary: ExecutionBoundary | null
   relevantSpecs: string[]
   lastFilesChanged: string[]
+  devSelfCheckResults?: string
   status: Phase
   phases: Phases
   tasks: TaskItem[]

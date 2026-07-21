@@ -1099,7 +1099,7 @@ describe("G21. dev_submit completed_task_ids 校验", () => {
     return JSON.parse(readFileSync(p, "utf-8"))
   }
 
-  test("不传 completed_task_ids 时报错", async () => {
+  test("不传 completed_task_ids + 有 open task → 报错 open/rejected 状态", async () => {
     const root = `/tmp/guard-g21a-${Date.now()}`
     const wt = setupWt(root, join(root, "w"))
     const fakeGit = new FakeGitRunner()
@@ -1117,7 +1117,7 @@ describe("G21. dev_submit completed_task_ids 校验", () => {
 
     await expect(
       dev_submit.execute({}, d)
-    ).rejects.toThrow(/completed_task_ids/)
+    ).rejects.toThrow(/以下 task 处于 open\/rejected 状态/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -1140,7 +1140,7 @@ describe("G21. dev_submit completed_task_ids 校验", () => {
 
     await expect(
       dev_submit.execute({ completed_task_ids: ["1"] }, d)
-    ).rejects.toThrow(/以下 task 不在 completed_task_ids 中.*#2.*T2/)
+    ).rejects.toThrow(/以下 task 处于 open\/rejected 状态且未在 completed_task_ids 中.*#2.*T2/)
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
@@ -1169,6 +1169,72 @@ describe("G21. dev_submit completed_task_ids 校验", () => {
     const st = readStateSync(wt)
     const tg = st.taskGroups.find((g: any) => g.id === "1")
     expect(tg.tasks.every((t: any) => t.status === "submitted")).toBe(true)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("所有 task 已 verified，不传 completed_task_ids → 提交成功", async () => {
+    const root = `/tmp/guard-g21d-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ outcome: "ready",
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    const state = readStateSync(wt)
+    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/T.java"])
+
+    // 先提交，让所有 task 变为 submitted
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
+
+    // 直接修改状态文件，将 task 标记为 verified
+    const s2 = readStateSync(wt)
+    const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
+    tg2.tasks[0].status = "verified"
+    tg2.tasks[1].status = "verified"
+    const statePath = join(wt, ".opencode", ".orchestrate_state", `${CID}.json`)
+    writeFileSync(statePath, JSON.stringify(s2, null, 2))
+
+    // 再次提交，不传 completed_task_ids → 应成功（所有 task 已 verified）
+    fakeGit.diffs.set(devWt, ["src/T.java"])
+    const result = await dev_submit.execute({}, d)
+    const parsed = JSON.parse(typeof result === "string" ? result : (result as any).output)
+    expect(parsed.status).toBe("ok")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("dev_submit 传入 self_check_results → 正确写入 state", async () => {
+    const root = `/tmp/guard-g21e-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ outcome: "ready",
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    const state = readStateSync(wt)
+    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/T.java"])
+
+    const result = await dev_submit.execute({
+      completed_task_ids: ["1", "2"],
+      self_check_results: "lint: pass, typecheck: pass, tests: 42/42 passed"
+    }, d)
+    const parsed = JSON.parse(typeof result === "string" ? result : (result as any).output)
+    expect(parsed.status).toBe("ok")
+
+    const s2 = readStateSync(wt)
+    const tg2 = s2.taskGroups.find((g: any) => g.id === "1")
+    expect(tg2.devSelfCheckResults).toBe("lint: pass, typecheck: pass, tests: 42/42 passed")
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })

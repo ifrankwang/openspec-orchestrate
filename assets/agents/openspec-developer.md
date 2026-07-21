@@ -104,9 +104,18 @@ changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
 
 修复审查反馈时使用 `fix` 或 `refactor` 类型，commit message 中引用 issue 编号。
 
+## 提交前自检
+
+调用 `opx_dev_submit` 前必须通过以下自检：
+1. 执行项目代码质量检查（lint/format/typecheck），具体命令由技术栈 skill 提供
+2. 执行项目测试套件，具体命令由技术栈 skill 提供
+3. 确认工作区干净（git status 无未 commit 内容）
+
+通过后调用 `opx_dev_submit` 时通过 `self_check_results` 参数汇总自检结果。
+
 ## 最终提交（opx_dev_submit）
 
-完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit(outcome="completed", completed_task_ids=["1", "2", ...])`，其中 `completed_task_ids` 列出本次提交已完成的 task ID。生产路径禁止用 stub、fake、空实现或硬编码成功替代验收。
+完成所有可修内容后，先 commit（git status clean），然后调用 `opx_dev_submit(outcome="completed", completed_task_ids=["1", "2", ...], self_check_results=...)`，其中 `completed_task_ids` 列出本次提交已完成的 task ID。若所有 task 已处于 verified 状态，`completed_task_ids` 可为空。生产路径禁止用 stub、fake、空实现或硬编码成功替代验收。
 
 如有 task 因外部依赖或阻塞无法完成，改用 `opx_dev_submit(outcome="blocked", blocker=...)` 提交 blocker。
 

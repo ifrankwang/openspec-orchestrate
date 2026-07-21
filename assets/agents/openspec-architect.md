@@ -72,4 +72,12 @@ permission:
 - **工具调用边界**：仅可调用 `opx_arch_submit`、`opx_arch_blocker` 与 `opx_status`。
 - **只审当前任务组范围**：除"任务排列合理性"需阅览全部任务组标题外，其它检查聚焦当前任务组直接相关的文档章节。
 
+## 文档阅读关注点
+
+opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文）。关注：
+- clarify.md：架构方向结论
+- design.md：全文
+- tasks.md：全部任务组标题与当前组全文（用于排列合理性检查）
+- spec 文件：与当前组相关的需求（用于 spec↔tasks、spec↔design 交叉比对）
+
 

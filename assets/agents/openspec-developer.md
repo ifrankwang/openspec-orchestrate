@@ -26,16 +26,12 @@ permission:
 3. **加载 skill**：通过 Skill tool 加载，遵循其中的编码规范、架构规则、构建命令、框架特定用法等
 4. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在提交报告中标注"未加载技术栈 skill"
 
-## 必读文档派生规则
+## 文档阅读关注点
 
-changeId 通过 `opx_status` 获取。基于 changeId 读取以下路径：
-
-| 文档 | 路径 | 阅读范围 |
-|------|------|---------|
-| clarify.md | `openspec/changes/<changeId>/clarify.md` | **架构方向结论**部分 |
-| design.md | `openspec/changes/<changeId>/design.md` | 全文（200-500 行） |
-| spec/*.md | 通过 `opx_status` 获取 | 需求细节和验收标准 |
-| AGENTS.md | 项目根目录 | 全文 |
+opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文）。关注：
+- clarify.md：架构方向结论
+- design.md：全文
+- spec 文件：需求细节和验收标准
 
 ## 场景识别与行为模式
 

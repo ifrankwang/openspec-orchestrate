@@ -259,12 +259,15 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
       : "(tool)"
     : ""
   lines.push(`**当前阶段**: ${tg.status}${arcReviewLayer}`, "")
-  lines.push("## 相关 spec 文件", "")
+  lines.push("## 推荐阅读文档", "")
+  lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
+  lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
+  lines.push(`- \`openspec/changes/${state.changeId}/tasks.md\``)
   if (tg.relevantSpecs.length === 0) {
-    lines.push("- (无)")
+    lines.push("- (无 spec 文件)")
   } else {
     for (const s of tg.relevantSpecs) {
-lines.push(`- \`openspec/changes/${state.changeId}/\``)
+      lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
     }
   }
   lines.push("")
@@ -288,7 +291,7 @@ lines.push(`- \`openspec/changes/${state.changeId}/\``)
   
   lines.push("## 操作指引", "")
   lines.push("")
-  lines.push("1. 读取以下文档原文：clarify.md（架构方向结论）、tasks.md（全部任务组标题 + 当前组全文）、design.md（当前组相关章节）、上方「相关 spec 文件」所有文件")
+  lines.push("1. 读取上方「推荐阅读文档」中所有文件原文")
   lines.push("2. 交叉比对：")
   lines.push("   - spec ↔ tasks：当前组子任务是否有对应需求？")
   lines.push("   - spec ↔ design：设计方案是否覆盖 spec 需求？")
@@ -343,8 +346,10 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
     lines.push("")
     lines.push("**必须完成 5-Why 根因分析后再动手修复**，不得跳过分析直接改代码。", "")
   }
-  lines.push("## 相关 spec 文件", "")
-  if (tg.relevantSpecs.length === 0) lines.push("- (无)")
+  lines.push("## 推荐阅读文档", "")
+  lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
+  lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
+  if (tg.relevantSpecs.length === 0) lines.push("- (无 spec 文件)")
   else for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
   lines.push("")
   lines.push("## Task (待完成)", "")
@@ -455,6 +460,11 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
   else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
   lines.push("")
+  lines.push("## 推荐阅读文档", "")
+  lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
+  if (tg.relevantSpecs.length === 0) lines.push("- (无 spec 文件)")
+  else for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
+  lines.push("")
   if (tg.executionBoundary?.notes) {
     lines.push("## 实施指引", "")
     lines.push(tg.executionBoundary.notes)
@@ -515,6 +525,18 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
   else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
   lines.push("")
+  if (dimension === "architecture") {
+    lines.push("## 推荐阅读文档", "")
+    lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
+    if (tg.relevantSpecs.length > 0) {
+      for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
+    }
+    lines.push("")
+  } else if (dimension === "performance" || dimension === "security") {
+    lines.push("## 推荐阅读文档", "")
+    lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
+    lines.push("")
+  }
   lines.push(
     "> 回归排查：对照上述「上轮变更文件」，检查本次修复是否在本维度引入了新问题；发现即在本维度报新 issue。",
     ""

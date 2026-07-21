@@ -119,14 +119,11 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 5. 汇总后调用 `opx_task_review_submit(passed, issues, verified_task_ids, failed_task_ids, test_results, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
-## 必读文档派生规则
+## 文档阅读关注点
 
-changeId 通过 `opx_status` 获取，基于其派生：
-
-| 文档 | 路径 | 阅读范围 |
-|------|------|---------|
-| AGENTS.md | 项目根目录 | 全文 |
-| application.yml | `src/main/resources/` | 全文（测试 profile 与依赖配置） |
+opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文）。关注：
+- design.md：API 定义、请求/响应结构、数据模型
+- spec 文件：需求细节和验收标准（用于准备测试数据、对照 API 合约）
 
 
 

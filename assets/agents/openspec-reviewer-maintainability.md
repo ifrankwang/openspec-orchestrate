@@ -82,14 +82,9 @@ permission:
 8. 汇总后调用 `opx_quality_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
-## 必读文档派生规则
+## 文档阅读关注点
 
-changeId 通过 `opx_status` 获取：
-
-| 文档 | 路径 | 阅读范围 |
-|------|------|---------|
-| design.md | `openspec/changes/<changeId>/design.md` | DDD 架构章节 |
-| AGENTS.md | 项目根目录 | 全文 |
+阅读项目根 AGENTS.md（全文）。
 
 
 

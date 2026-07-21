@@ -57,7 +57,7 @@ function formatSeverity(severity: string): string {
     case "High": return `**${severity}**`
     case "Medium": return `*${severity}*`
     case "Low": return severity
-    case "Info": return `~~${severity}~~`
+    case "Info": return `\`${severity}\``
     default: return severity
   }
 }

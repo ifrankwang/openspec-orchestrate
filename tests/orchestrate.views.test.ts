@@ -11,6 +11,7 @@ import {
   renderToolReviewView,
   renderTaskReviewView,
   renderQualityReviewView,
+  formatFilePath,
 } from "../src/tools/orchestrate/views"
 import type { OrchestrateState, TaskGroupState, TaskItem, IssueItem, BlockerItem, ExecutionBoundary } from "../src/tools/orchestrate/types"
 import { REVIEW_DIMENSIONS } from "../src/tools/orchestrate/types"
@@ -224,5 +225,56 @@ describe("一致性分析 sourcePhase 过滤", () => {
     tg.phases.review.quality.progress.style = "passed"
     const output = renderOrchestratorView(state, tg)
     expect(output).toContain("review 内部矛盾")
+  })
+})
+
+describe("formatFilePath 路径截断", () => {
+  test("短路径不截断", () => {
+    expect(formatFilePath("src/Foo.java", 10)).toBe("src/Foo.java:10")
+  })
+  test("长路径截断为末两段", () => {
+    const longFile = "src/main/resources/db/migration/tenant/V1__init_schema.sql"
+    const result = formatFilePath(longFile, 585)
+    expect(result).toContain("...")
+    expect(result).toContain("V1__init_schema.sql:585")
+    expect(result.length).toBeLessThan(longFile.length + 4)
+  })
+  test("line=0 不附加行号", () => {
+    expect(formatFilePath("src/Foo.java", 0)).toBe("src/Foo.java")
+  })
+  test("超长单段路径截断末尾", () => {
+    const longSegment = "a".repeat(100)
+    const result = formatFilePath(longSegment, 0, 60)
+    expect(result.length).toBe(60)
+    expect(result.endsWith("...")).toBe(true)
+  })
+  test("2 段路径超 maxLen 仍截断", () => {
+    const result = formatFilePath("long_directory_name/quite_long_filename_to_display.sql", 100, 60)
+    expect(result.length).toBeLessThanOrEqual(60)
+    expect(result).toContain(":100")
+  })
+  test("恰好 maxLen 边界不截断", () => {
+    const path58 = "a".repeat(58)
+    const result = formatFilePath(path58, 1, 60)
+    expect(result).toBe(`${path58}:1`)
+  })
+  test("超 maxLen 1 字符截断", () => {
+    const path59 = "a".repeat(59)
+    const result = formatFilePath(path59, 1, 60)
+    expect(result.length).toBeLessThanOrEqual(60)
+    expect(result.endsWith("...")).toBe(true)
+  })
+  test("formatFilePath 结果始终 ≤ maxLen", () => {
+    const cases: [string, number][] = [
+      ["src/Foo.java", 10],
+      ["src/main/resources/db/migration/V1__init_schema.sql", 585],
+      ["a/really/really/deeply/nested/path/to/file.sql", 42],
+      ["single_long_file_name_that_exceeds_the_maximum_length.sql", 1],
+      ["short/a.txt", 0],
+    ]
+    for (const [file, line] of cases) {
+      const result = formatFilePath(file, line, 60)
+      expect(result.length).toBeLessThanOrEqual(60)
+    }
   })
 })

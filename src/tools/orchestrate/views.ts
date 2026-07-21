@@ -3,6 +3,25 @@ import { REVIEW_DIMENSIONS } from "./types.js"
 import { SEVERITY_LEVELS, DIMENSION_AGENT_MAP, MAX_RETRIES } from "./constants.js"
 import { deriveStatus, isReviewCompleted, allTasksVerified, deriveCurrentAgents, isBlockingIssue, isStatusUnresolved } from "./derive.js"
 
+/**
+ * 智能缩短文件路径展示。
+ * 短路径（≤60 字符）原样返回；长路径取末两段 + "..." 前缀。
+ */
+export function formatFilePath(file: string, line: number, maxLen = 60): string {
+  const suffix = line > 0 ? `:${line}` : ""
+  const full = `${file}${suffix}`
+  if (full.length <= maxLen) return full
+  const parts = file.split("/")
+  if (parts.length <= 1) return full.slice(0, maxLen - 3) + "..."
+  const base = parts[parts.length - 1]
+  const parent = parts[parts.length - 2]
+  const tryTwo = `.../${parent}/${base}${suffix}`
+  if (tryTwo.length <= maxLen) return tryTwo
+  const lastSeg = `${base}${suffix}`
+  if (lastSeg.length <= maxLen) return lastSeg
+  return lastSeg.slice(0, maxLen - 3) + "..."
+}
+
 export function taskSummary(tasks: TaskItem[]): Record<string, number> {
   const counts: Record<string, number> = { open: 0, submitted: 0, rejected: 0, verified: 0 }
   for (const t of tasks) counts[t.status]++
@@ -35,7 +54,7 @@ export function sortIssuesByCategory(issues: IssueItem[]): IssueItem[] {
 export function renderIssueItem(i: IssueItem): string {
   const lines: string[] = []
   lines.push(`- Issue #${i.id} | ${i.severity} | ${i.dimension} | [${i.sourcePhase}]`)
-  lines.push(`  - 文件：${i.file}${i.line > 0 ? `:${i.line}` : ""}`)
+  lines.push(`  - 文件：${formatFilePath(i.file, i.line)}`)
   lines.push(`  - 描述：${i.description}`)
   if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
   if (i.status === "exemption_requested" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
@@ -318,7 +337,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
     lines.push("## ⚠️ 修复多次未过的 issue（须根因分析）", "")
     for (const issue of highRefixBlocking) {
       lines.push(`- Issue #${issue.id}（已 ${issue.refixCount} 次修复未过）`)
-      lines.push(`  - 文件：${issue.file}${issue.line > 0 ? `:${issue.line}` : ""}`)
+      lines.push(`  - 文件：${formatFilePath(issue.file, issue.line)}`)
       lines.push(`  - 描述：${issue.description}`)
     }
     lines.push("")
@@ -403,7 +422,7 @@ export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState
   if (allIssues.length === 0) lines.push("- (无)")
   else for (const i of sortIssuesByCategory(allIssues)) {
     const dimTag = `[${i.dimension}]`
-    lines.push(`- ${dimTag} Issue #${i.id} | ${i.severity} | ${i.file}${i.line > 0 ? `:${i.line}` : ""}`)
+    lines.push(`- ${dimTag} Issue #${i.id} | ${i.severity} | ${formatFilePath(i.file, i.line)}`)
     lines.push(`  - 描述：${i.description}`)
     if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
     if (i.status === "exemption_requested" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)

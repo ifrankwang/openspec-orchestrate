@@ -51,9 +51,20 @@ export function sortIssuesByCategory(issues: IssueItem[]): IssueItem[] {
   return [...issues].sort((a, b) => dimRank(a.dimension) - dimRank(b.dimension) || sevRank(a.severity) - sevRank(b.severity))
 }
 
+function formatSeverity(severity: string): string {
+  switch (severity) {
+    case "Critical": return `**${severity}**`
+    case "High": return `**${severity}**`
+    case "Medium": return `*${severity}*`
+    case "Low": return severity
+    case "Info": return `~~${severity}~~`
+    default: return severity
+  }
+}
+
 export function renderIssueItem(i: IssueItem): string {
   const lines: string[] = []
-  lines.push(`- Issue #${i.id} | ${i.severity} | ${i.dimension} | [${i.sourcePhase}]`)
+  lines.push(`- Issue #${i.id} | ${formatSeverity(i.severity)} | ${i.dimension} | [${i.sourcePhase}]`)
   lines.push(`  - 文件：${formatFilePath(i.file, i.line)}`)
   lines.push(`  - 描述：${i.description}`)
   if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
@@ -377,7 +388,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   if (blockingIssues.length === 0) lines.push("- (无)")
   else for (const i of sortIssuesByCategory(blockingIssues)) lines.push(renderIssueItem(i))
   lines.push("")
-  lines.push("## Issue (待修复 · Info，可选，不阻塞提交)", "")
+  lines.push("## Issue (待修复 · Info，建议修复，不阻塞提交)", "")
   const infoFix = tg.issues.filter(
     (i) => (i.status === "open" || i.status === "rejected") && !isBlockingIssue(i)
   )
@@ -397,7 +408,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("1. 按「Task (待完成)」逐项实施（仅限上方「执行边界」内）")
-  lines.push("2. 按 issue 中 suggestion 修复「Issue (待修复 · Low 及以上，必办)」；Info 可选")
+  lines.push("2. 按 issue 中 suggestion 修复「Issue (待修复 · Low 及以上，必办)」；Info 建议修复")
   lines.push("3. 不可修 issue → opx_dev_submit(request_exempts=[...])")
   lines.push("4. 全部完成 → commit → opx_dev_submit(outcome=\"completed\")")
   lines.push("5. 遇外部依赖/凭证/真实输入缺失无法继续 → opx_dev_submit(outcome=\"blocked\")")
@@ -427,7 +438,7 @@ export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState
   if (allIssues.length === 0) lines.push("- (无)")
   else for (const i of sortIssuesByCategory(allIssues)) {
     const dimTag = `[${i.dimension}]`
-    lines.push(`- ${dimTag} Issue #${i.id} | ${i.severity} | ${formatFilePath(i.file, i.line)}`)
+    lines.push(`- ${dimTag} Issue #${i.id} | ${formatSeverity(i.severity)} | ${formatFilePath(i.file, i.line)}`)
     lines.push(`  - 描述：${i.description}`)
     if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
     if (i.status === "exemption_requested" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)

@@ -5,7 +5,7 @@ hidden: true
 steps: 200
 permission:
   edit: deny
-  bash: deny
+  bash: allow
 ---
 
 ## 角色
@@ -20,6 +20,7 @@ permission:
 
 执行任务前，按以下优先级加载项目技术栈相关的 skill：
 
+0. 加载 code-efficiency skill。
 1. **读取项目文档**：优先读取项目根目录的 AGENTS.md 或 CLAUDE.md，从中获取技术栈声明和已有规范
 2. **检测构建文件**：若 AGENTS.md 中未声明或因项目未初始化而不存在，检查构建配置文件（pom.xml / build.gradle / package.json / go.mod / Cargo.toml 等）和目录结构识别技术栈
 3. **项目未初始化**：若无 AGENTS.md、CLAUDE.md 及任何构建文件（全新项目），根据当前上下文中的 spec/design/tasks 文档描述推断技术栈，并在报告中标注"项目未初始化，基于文档推断"

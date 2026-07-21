@@ -9,6 +9,18 @@
 
 tsconfig.json 已在项目根，typecheck 经 tsc 按其配置严格检查 `src/`。
 
+## 项目目录结构
+
+操作此项目前明确以下目录的职责边界：
+
+| 目录 | 内容 |
+|------|------|
+| `assets/agents/` | 子代理定义文件（`openspec-*.md`）。技能加载、权限声明、行为约束在此修改。 |
+| `assets/skills/` | 项目分发的 skill（供子代理加载），如 `code-efficiency/SKILL.md`。`~/.agents/skills/` 为全局安装的同名 skill，两者不互通，改项目 skill 须改此目录。 |
+| `.agents/skills/` | 项目内部分析用 skill，如 `openspec-orchestrate-optimizer`。非子代理加载目标。 |
+| `src/tools/` | 编排工具实现（`orchestrate.ts` 等）。行为以源码为准。 |
+| `tests/` | 测试文件。`bun test` 执行。 |
+
 ## 治理原则
 
 ### 流程文档职责

@@ -20,6 +20,7 @@ permission:
 
 执行任务前，根据项目技术栈和你的执行目标，自行判断并加载合适的 skill：
 
+0. 加载 code-efficiency skill。
 1. **识别技术栈**：检查项目根目录的构建配置文件（pom.xml / build.gradle / package.json / go.mod / Cargo.toml 等）
 2. **查找匹配 skill**：列出 `.agents/skills/` 目录中的可用 skill，选择匹配项；也可使用全局 skill（`~/.agents/skills/`）
 3. **加载 skill**：通过 Skill tool 加载，遵循其中的编码规范、架构规则、构建命令、框架特定用法等

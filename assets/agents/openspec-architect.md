@@ -7,7 +7,7 @@ permission:
   edit:
     "*": deny
     "*.md": allow
-  bash: deny
+  bash: allow
 ---
 
 ## 角色
@@ -22,6 +22,7 @@ permission:
 
 执行 Phase 2 复核前，按以下优先级加载项目技术栈相关的 skill：
 
+0. 加载 code-efficiency skill。
 1. **读取项目文档**：优先读取项目根目录的 AGENTS.md 或 CLAUDE.md
 2. **检测构建文件**：若无 AGENTS.md，检查构建配置文件（pom.xml / build.gradle / package.json / go.mod / Cargo.toml 等）
 3. **加载 skill**：优先项目级 skill（`.agents/skills/`），其次全局 skill（`~/.agents/skills/`）

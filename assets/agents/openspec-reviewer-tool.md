@@ -40,6 +40,10 @@ permission:
 | Low | 格式违规；静态分析低风险（未使用 import） |
 | Info | 非强制性建议 |
 
+## 审查范围
+
+工具检查覆盖全量代码。检查过程中发现的任何文件的工具违规（包括非本轮变更文件），均按统一严重级别体系映射为 issue 并提交。禁止因"非本轮引入"静默丢弃。
+
 ## 工具检查流程
 
 ### 第一步：加载质量门 skill
@@ -61,7 +65,8 @@ permission:
 ### 第四步：汇总与提交
 
 1. **去重责任**：从 `opx_status` 获取本维度存量 issue（submitted），新报 issue 不得与存量语义重复。
-2. 汇总后调用 `opx_tool_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
+2. **非本轮问题检查**：遍历全部已发现的工具输出中的 issue，确认每条非本轮变更文件中的违规均已按严重级别体系纳入 issues 列表。禁止因"非本轮引入"筛除任何 Low+ 合法 issue。
+3. 汇总后调用 `opx_tool_review_submit(passed, issues, fixed_issue_ids?, exempt_issue_ids?, rejected_issue_ids?)` 提交
    `boundary_expansion` 参数：若某 issue 修复范围超出原定执行边界（如跨多文件），提交时通过 `boundary_expansion` 声明所需目录/包。仅 `passed=false` 时有效。
 
 

@@ -58,7 +58,7 @@ export const arch_submit = tool({
       throw new Error("存在 awaiting_user blocker，请先用 opx_arch_blocker 逐个处理后再提交 outcome=ready。")
     }
     tg.executionBoundary = args.execution_boundary
-    const parsedTasks = await parseTasksMdForGroup(context.worktree, state.changeId, state.taskGroupId)
+    const parsedTasks = await parseTasksMdForGroup(tg.worktreePath || context.worktree, state.changeId, state.taskGroupId)
     tg.tasks = parsedTasks.map((task, index) => ({ id: String(index + 1), specTrace: task.specTrace, title: task.title, status: "open", taskNumber: task.taskNumber, rejectReason: null }))
     tg.relevantSpecs = extractRelevantSpecsFromTasks(parsedTasks)
     tg.phases.architect_review.completed = true
@@ -67,21 +67,23 @@ export const arch_submit = tool({
     for (const dimension of REVIEW_DIMENSIONS) tg.phases.review.quality.progress[dimension] = "pending"
     tg.status = "dev_impl"
     const changeDir = `openspec/changes/${state.changeId}`
-    const statusResult = await runGitChecked(context.worktree, ["status", "--porcelain", changeDir])
+    const statusResult = await runGitChecked(tg.worktreePath || context.worktree, ["status", "--porcelain", changeDir])
     if (!statusResult.success) {
       throw new Error(`git status openspec 文档失败：${statusResult.stderr}`)
     }
     if (statusResult.stdout) {
-      const addResult = await runGitChecked(context.worktree, ["add", changeDir])
+      const addResult = await runGitChecked(tg.worktreePath || context.worktree, ["add", changeDir])
       if (!addResult.success) {
         throw new Error(`git add openspec docs 失败：${addResult.stderr}`)
       }
-      const commitResult = await runGitChecked(context.worktree, [
+      const commitResult = await runGitChecked(tg.worktreePath || context.worktree, [
         "commit", "-m", `docs(openspec): refine specs for task-group ${state.taskGroupId}`,
       ])
       if (!commitResult.success) {
         throw new Error(`git commit openspec docs 失败：${commitResult.stderr}`)
       }
+    } else {
+      // openspec 文档无变更，跳过 commit
     }
     await writeState(context.worktree, state)
     return JSON.stringify(

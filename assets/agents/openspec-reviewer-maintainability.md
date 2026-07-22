@@ -97,3 +97,5 @@ permission:
 仅可调用：`opx_status`（只读）、`opx_quality_review_submit`（提交）。完成审查后**必须**调用 `opx_quality_review_submit` 提交。即使无 issue，也必须提交 passed=true。
 
 禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_tool_review_submit`、`opx_task_review_submit` 等任何其它编排工具。
+
+禁止运行确定性工具检查（包括但不限于 linter/formatter/静态分析/编译/测试/架构约束检查等）。

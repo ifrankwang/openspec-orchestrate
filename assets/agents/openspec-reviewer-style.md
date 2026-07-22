@@ -52,10 +52,10 @@ permission:
 
 ## 审查内容（规范维度）
 
-加载匹配的 skill 后，按其中编码规范、代码格式工具配置、命名约定进行审查：
+加载匹配的 skill 后，按其中编码规范、格式约定、命名约定进行 AI 语义审查：
 
-- 代码格式和风格：按 skill 中的格式化工具（如代码格式化工具）规则
-- 静态分析规则：按 skill 中的静态分析工具（如代码静态分析工具）规则
+- 代码风格一致性：按 skill 中的代码格式约定
+- 静态分析规则一致性：按 skill 中的静态分析规则约定
 - 命名规范：按 skill 中的命名约定（类/函数/变量/常量）
 - 包/模块结构：按 skill 中的目录/包结构约定
 - 配置一致性：跨环境配置文件是否一致（如凭证与容器配置）
@@ -93,3 +93,5 @@ permission:
 仅可调用：`opx_status`（只读）、`opx_quality_review_submit`（提交）。完成审查后**必须**调用 `opx_quality_review_submit` 提交。即使无 issue，也必须提交 passed=true。
 
 禁止调用 `opx_orch_*`、`opx_arch_*`、`opx_dev_*`、`opx_tool_review_submit`、`opx_task_review_submit` 等任何其它编排工具。
+
+禁止运行确定性工具检查（包括但不限于 linter/formatter/静态分析/编译/测试/架构约束检查等）。

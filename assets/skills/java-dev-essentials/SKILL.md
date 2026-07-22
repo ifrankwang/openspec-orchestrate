@@ -22,11 +22,9 @@ mvn spring-boot:run                   # 启动应用
 - 配置在 pom.xml `spotless-maven-plugin`
 
 **PMD**：
-- 禁止 `System.out.println` / `System.err.println`
-- 强制 try-with-resources
-- 方法行数上限 100，类圈复杂度上限 20、方法上限 15
-- 规则集文件：`src/main/resources/pmd-rules.xml`，绑定 build 生命周期
-- PMD 检查返回非 0 即阻塞，不允许绕过
+- 基准规则集见 `rules/pmd-baseline.xml`，涵盖：禁止 System.out、强制 try-with-resources、禁止不必要的内联 FQN（`UnnecessaryFullyQualifiedName`）、方法行数上限 100、类圈复杂度上限 20/方法上限 15
+- 项目 `src/main/resources/pmd-rules.xml` 须至少包含基准所有规则，可按需扩展
+- 规则集文件绑定 build 生命周期，PMD 检查返回非 0 即阻塞
 
 **SonarLint**：IDE 建议安装 SonarLint 插件，尽量修复提示问题
 

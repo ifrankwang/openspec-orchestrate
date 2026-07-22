@@ -48,6 +48,8 @@ permission:
 
 评级时须确认是否违反技术栈 skill 中的 MUST 规则。违反 MUST 规则的最低为 Low。不得通过下调 severity 来使维度 passed。
 
+Info 级别 issue 的 description/suggestion 中禁止出现阶段/时机相关表述（如"当前阶段无需改动"、"可后续处理"、"不阻塞当前审查"等）。严重级别（Low 阻塞、Info 不阻塞）已充分传达处理时机，无需额外说明。
+
 ## 验证流程
 
 ### 第一步：Task 产出验证

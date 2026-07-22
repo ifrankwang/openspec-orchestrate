@@ -123,7 +123,7 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
 
 ## 文档阅读关注点
 
-opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文）。关注：
+opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文，关注构建命令与测试配置、CI 流程、测试策略约定）。关注：
 - design.md：API 定义、请求/响应结构、数据模型
 - spec 文件：需求细节和验收标准（用于准备测试数据、对照 API 合约）
 

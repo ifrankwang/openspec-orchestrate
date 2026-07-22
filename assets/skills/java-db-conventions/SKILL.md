@@ -66,7 +66,7 @@ CREATE UNIQUE INDEX uk_{table}_{column} ON {project_prefix}_{table} (business_ke
 |----|------|
 | Mapper 包路径 | `{basePackage}.infrastructure.persistence`（由 `@MapperScan` 显式指定） |
 | Mapper 注解 | 建议标注 `@Mapper` |
-| PO 基类 | infrastructure 层定义 PO 基类统一审计字段，PO 继承之（注意：domain 实体不继承，见 java-ddd-architecture） |
+| PO 基类 | infrastructure 层定义 PO 基类统一审计字段，PO 继承之（注意：domain 实体按 DDD 包结构约定，独立于 PO，不继承该基类） |
 | 查询方式 | 优先 `LambdaQueryWrapper` 面向对象方法；仅复杂多表关联/方言特性/Wrapper 难以表达时才写 XML SQL |
 | 避免 | `select *`，防止映射不稳定 |
 | Mapper XML | 语句间保持空行提升可读性 |

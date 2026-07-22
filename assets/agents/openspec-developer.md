@@ -28,7 +28,7 @@ permission:
 
 ## 文档阅读关注点
 
-opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文）。关注：
+opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文，关注编码规范、架构约束、构建命令、提交规范）。关注：
 - clarify.md：架构方向结论
 - design.md：全文
 - spec 文件：需求细节和验收标准

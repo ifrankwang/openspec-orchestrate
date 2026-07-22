@@ -146,9 +146,7 @@ cat target/site/jacoco/jacoco.csv
 | BRANCH_MISSED/COVERED | 分支覆盖率 |
 | LINE_MISSED/COVERED | 行覆盖率 |
 
-覆盖率检查以 pom.xml 中 JaCoCo `<check>` 配置为准。策略：
-- 全局保底：INSTRUCTION ≥ 80%、LINE ≥ 70%、BRANCH ≥ 60%（pom.xml 中 check execution）
-- 核心包：domain + application 包 LINE ≥ 90%（pom.xml 中 check-core execution）
+覆盖率检查以 pom.xml 中 JaCoCo `<check>` 配置为准。可按包路径定义多层策略（如整体保底 + 核心包高要求），各层阈值从 pom.xml 中读取。
 双层检查均在 `mvn verify` 中自动执行，任何一层不达标即 build 失败。
 
 ## 6. SonarQube 深度扫描

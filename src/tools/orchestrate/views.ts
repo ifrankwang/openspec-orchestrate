@@ -273,6 +273,15 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
       : "(tool)"
     : ""
   lines.push(`**当前阶段**: ${tg.status}${arcReviewLayer}`, "")
+  lines.push("## Worktree", "")
+  if (tg.worktreePath) {
+    lines.push(`- **路径**: \`${tg.worktreePath}\``)
+    lines.push(`- **分支**: \`${tg.branchName || "(none)"}\``)
+    if (tg.baseRef) lines.push(`- **diff 范围**: \`${tg.baseRef}..HEAD\``)
+  } else {
+    lines.push("- (worktree 尚未设置)")
+  }
+  lines.push("")
   lines.push("## 推荐阅读文档", "")
   lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
   lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)

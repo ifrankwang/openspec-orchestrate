@@ -74,7 +74,7 @@ permission:
 
 ## 文档阅读关注点
 
-opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文）。关注：
+调用 `opx_status` 自取上下文。opx_status 提供 worktree 路径及推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文）。关注：
 - clarify.md：架构方向结论
 - design.md：全文
 - tasks.md：全部任务组标题与当前组全文（用于排列合理性检查）

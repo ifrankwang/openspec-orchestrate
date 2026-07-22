@@ -68,10 +68,12 @@ function baseTg(overrides?: Partial<TaskGroupState>): TaskGroupState {
 
 describe("视图「操作指引」段", () => {
 
-  test("renderArchitectView 含操作指引", () => {
+  test("renderArchitectView 含操作指引及 Worktree", () => {
     const state = mockState()
     const tg = baseTg({ status: "task_analysis", tasks: [mockTask("1")] })
     const output = renderArchitectView(state, tg)
+    expect(output).toContain("## Worktree")
+    expect(output).toContain("(worktree 尚未设置)")
     expect(output).toContain("## 操作指引")
     expect(output).toContain("交叉比对")
     expect(output).toContain("opx_arch_submit")

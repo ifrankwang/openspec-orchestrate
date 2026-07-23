@@ -286,6 +286,14 @@ export const set_worktree = tool({
     const branch = args.branch_name || `task-group/${state.taskGroupId}`
     const wtPath = args.worktree_path || path.join(repoRoot, ".worktree", `task-group-${state.taskGroupId}`)
 
+    const changeStatus = await runGit(repoRoot, ["status", "--porcelain", `openspec/changes/${state.changeId}/`])
+    if (changeStatus.trim().length > 0) {
+      const addResult = await runGitChecked(repoRoot, ["add", `openspec/changes/${state.changeId}/`])
+      if (!addResult.success) throw new Error(`change 目录 git add 失败：${addResult.stderr}`)
+      const commitResult = await runGitChecked(repoRoot, ["commit", "-m", "docs(openspec): auto-commit before worktree setup"])
+      if (!commitResult.success) throw new Error(`change 目录 git commit 失败：${commitResult.stderr}`)
+    }
+
     const wtList = await runGit(repoRoot, ["worktree", "list"])
     const existingLine = wtList.split("\n").find((l) => {
       const m = l.match(/^(\S+)\s+[0-9a-f]+\s+\[(.+?)\]/)
@@ -295,12 +303,36 @@ export const set_worktree = tool({
 
     let reused = false
     if (existingPath) {
-      tg.worktreePath = existingPath
-      tg.branchName = branch
-      const baseRef = await getMergeBase(existingPath, state.baseBranch)
-      if (baseRef) tg.baseRef = baseRef
-      reused = true
-    } else {
+      // Phase B: sync worktree via fast-forward merge
+      const baseHead = await runGit(repoRoot, ["rev-parse", state.baseBranch])
+      const mergeResult = await runGitChecked(existingPath, ["merge", "--ff-only", baseHead])
+      if (mergeResult.success) {
+        tg.worktreePath = existingPath
+        tg.branchName = branch
+        const baseRef = await getMergeBase(existingPath, state.baseBranch)
+        if (baseRef) tg.baseRef = baseRef
+        reused = true
+      } else {
+        // Diverged — can't fast-forward; clean up if safe
+        const clean = await isWorktreeClean(existingPath)
+        if (!clean) {
+          throw new Error(
+            `已有 worktree "${existingPath}" 与 ${state.baseBranch} 分叉且有未提交变更，` +
+            `无法自动 fast-forward。请手动处理后重试。`
+          )
+        }
+        const rmResult = await runGitChecked(repoRoot, ["worktree", "remove", existingPath, "--force"])
+        if (!rmResult.success) {
+          throw new Error(`无法清理已有 worktree "${existingPath}"：${rmResult.stderr}`)
+        }
+        const branchRmResult = await runGitChecked(repoRoot, ["branch", "-D", branch])
+        if (!branchRmResult.success) {
+          throw new Error(`无法清理已有分支 "${branch}"：${branchRmResult.stderr}`)
+        }
+      }
+    }
+
+    if (!reused) {
       try {
         const f = Bun.file(path.join(wtPath, ".git"))
         if (await f.exists()) {

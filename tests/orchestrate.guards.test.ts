@@ -97,6 +97,87 @@ describe("G1. set_worktree 守卫已移除", () => {
   })
 })
 
+// ── G1.2: set_worktree 自修复 ──
+
+describe("G1.2. set_worktree 自修复", () => {
+  test("change 目录有未提交变更 → auto-commit", async () => {
+    const root = `/tmp/guard-g1-2a-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    fakeGit.dirtyPaths.add(`${wt}-openspec`)
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    const result = JSON.parse(await set_worktree.execute({}, o))
+    expect(result.status).toBe("ok")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("已有 worktree 可 fast-forward → merge + 复用", async () => {
+    const root = `/tmp/guard-g1-2b-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+
+    let result = JSON.parse(await set_worktree.execute({}, o))
+    expect(result.status).toBe("ok")
+    expect(result.reused).toBe(false)
+
+    result = JSON.parse(await set_worktree.execute({}, o))
+    expect(result.status).toBe("ok")
+    expect(result.reused).toBe(true)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("已有 worktree 分叉 + clean → 清理重建", async () => {
+    const root = `/tmp/guard-g1-2c-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+
+    let result = JSON.parse(await set_worktree.execute({}, o))
+    expect(result.status).toBe("ok")
+    expect(result.reused).toBe(false)
+
+    fakeGit.mergeConflictOnNext = true
+    result = JSON.parse(await set_worktree.execute({}, o))
+    expect(result.status).toBe("ok")
+    expect(result.reused).toBe(false)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("已有 worktree 分叉 + dirty → 抛错", async () => {
+    const root = `/tmp/guard-g1-2d-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+
+    const result = JSON.parse(await set_worktree.execute({}, o))
+    expect(result.status).toBe("ok")
+
+    fakeGit.mergeConflictOnNext = true
+    const wtPath = join(wt, ".worktree", "task-group-1")
+    fakeGit.dirtyPaths.add(wtPath)
+
+    await expect(set_worktree.execute({}, o)).rejects.toThrow(/分叉且有未提交变更/)
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
 // ── G1.1: dev_submit worktree 守卫 ──
 
 describe("G1.1. dev_submit worktree 守卫", () => {

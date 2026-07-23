@@ -4,6 +4,25 @@ import { SEVERITY_LEVELS, DIMENSION_AGENT_MAP, MAX_RETRIES } from "./constants.j
 import { deriveStatus, isReviewCompleted, allTasksVerified, deriveCurrentAgents, isBlockingIssue, isStatusUnresolved } from "./derive.js"
 
 /**
+ * 渲染 worktree 信息段落（含路径、分支、diff 范围及操作约束）。
+ * 所有子代理视图共享相同段落，避免多处复制。
+ */
+function renderWorktreeSection(tg: TaskGroupState): string[] {
+  const lines: string[] = []
+  lines.push("## Worktree", "")
+  if (tg.worktreePath) {
+    lines.push(`- **路径**: \`${tg.worktreePath}\``)
+    lines.push(`- **分支**: \`${tg.branchName || "(none)"}\``)
+    if (tg.baseRef) lines.push(`- **diff 范围**: \`${tg.baseRef}..HEAD\``)
+    lines.push("- **⚠️ 约束**: 所有读写和 git 操作均在此目录下进行")
+  } else {
+    lines.push("- (worktree 尚未设置)")
+  }
+  lines.push("")
+  return lines
+}
+
+/**
  * 智能缩短文件路径展示。
  * 短路径（≤60 字符）原样返回；长路径取末两段 + "..." 前缀。
  */
@@ -273,15 +292,7 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
       : "(tool)"
     : ""
   lines.push(`**当前阶段**: ${tg.status}${arcReviewLayer}`, "")
-  lines.push("## Worktree", "")
-  if (tg.worktreePath) {
-    lines.push(`- **路径**: \`${tg.worktreePath}\``)
-    lines.push(`- **分支**: \`${tg.branchName || "(none)"}\``)
-    if (tg.baseRef) lines.push(`- **diff 范围**: \`${tg.baseRef}..HEAD\``)
-  } else {
-    lines.push("- (worktree 尚未设置)")
-  }
-  lines.push("")
+  lines.push(...renderWorktreeSection(tg))
   lines.push("## 推荐阅读文档", "")
   lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
   lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
@@ -335,15 +346,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   const lines: string[] = []
   lines.push("# 开发上下文", "")
   lines.push(`当前阶段: ${tg.status}`, "")
-  lines.push("## Worktree", "")
-  if (tg.worktreePath) {
-    lines.push(`- **路径**: \`${tg.worktreePath}\``)
-    lines.push(`- **分支**: \`${tg.branchName || "(none)"}\``)
-    if (tg.baseRef) lines.push(`- **diff 范围**: \`${tg.baseRef}..HEAD\``)
-  } else {
-    lines.push("- (worktree 尚未设置)")
-  }
-  lines.push("")
+  lines.push(...renderWorktreeSection(tg))
   lines.push("## 执行边界", "")
   if (tg.executionBoundary) {
     const b = tg.executionBoundary
@@ -430,15 +433,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
 export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): string {
   const lines: string[] = []
   lines.push("# 工具审核上下文", "")
-  lines.push("## Worktree", "")
-  if (tg.worktreePath) {
-    lines.push(`- **路径**: \`${tg.worktreePath}\``)
-    lines.push(`- **分支**: \`${tg.branchName || "(none)"}\``)
-    if (tg.baseRef) lines.push(`- **diff 范围**: \`${tg.baseRef}..HEAD\``)
-  } else {
-    lines.push("- (worktree 尚未设置)")
-  }
-  lines.push("")
+  lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
   else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
@@ -470,15 +465,7 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   const lines: string[] = []
   lines.push("# 任务审核上下文", "")
   lines.push(`**tool 层**: ${tg.phases.review.tool.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
-  lines.push("## Worktree", "")
-  if (tg.worktreePath) {
-    lines.push(`- **路径**: \`${tg.worktreePath}\``)
-    lines.push(`- **分支**: \`${tg.branchName || "(none)"}\``)
-    if (tg.baseRef) lines.push(`- **diff 范围**: \`${tg.baseRef}..HEAD\``)
-  } else {
-    lines.push("- (worktree 尚未设置)")
-  }
-  lines.push("")
+  lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
   else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
@@ -535,15 +522,7 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   const lines: string[] = []
   lines.push(`# AI 审查上下文 — ${dimension}`, "")
   lines.push(`**task 层**: ${tg.phases.review.task.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
-  lines.push("## Worktree", "")
-  if (tg.worktreePath) {
-    lines.push(`- **路径**: \`${tg.worktreePath}\``)
-    lines.push(`- **分支**: \`${tg.branchName || "(none)"}\``)
-    if (tg.baseRef) lines.push(`- **diff 范围**: \`${tg.baseRef}..HEAD\``)
-  } else {
-    lines.push("- (worktree 尚未设置)")
-  }
-  lines.push("")
+  lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
   else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)

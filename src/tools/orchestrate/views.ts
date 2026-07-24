@@ -6,48 +6,16 @@ import { readdirSync, readFileSync, existsSync } from "node:fs"
 import { resolve, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
-/**
- * 各 agent 能力标签建议映射。
- * 工具产出中的 skill 加载指引，不依赖 agent md 指令。
- * 键为 agent 名，值为 [必加载标签列表, 按需加载标签列表]。
- */
-const AGENT_CAPABILITY_SUGGESTIONS: Record<string, [string[], string[]]> = {
-  "openspec-architect": [
-    ["efficiency"],
-    ["architecture", "api-design"],
-  ],
-  "openspec-developer": [
-    ["efficiency"],
-    ["api-testing", "api-design", "architecture", "db-design", "security"],
-  ],
-  "openspec-reviewer-tool": [
-    ["efficiency", "quality-gate"],
-    [],
-  ],
-  "openspec-reviewer-task": [
-    ["efficiency"],
-    ["api-testing"],
-  ],
-  "openspec-reviewer-architecture": [
-    ["efficiency"],
-    ["tool-improvement", "architecture", "api-design"],
-  ],
-  "openspec-reviewer-maintainability": [
-    ["efficiency"],
-    ["tool-improvement", "db-design"],
-  ],
-  "openspec-reviewer-performance": [
-    ["efficiency"],
-    ["tool-improvement", "security"],
-  ],
-  "openspec-reviewer-security": [
-    ["efficiency"],
-    ["tool-improvement", "security"],
-  ],
-  "openspec-reviewer-style": [
-    ["efficiency"],
-    ["tool-improvement", "api-design", "db-design"],
-  ],
+const AGENT_CAPABILITY_SUGGESTIONS: Record<string, string[]> = {
+  "openspec-architect": ["efficiency", "architecture", "api-design", "db-design"],
+  "openspec-developer": ["efficiency", "api-testing"],
+  "openspec-reviewer-tool": ["efficiency", "quality-gate"],
+  "openspec-reviewer-task": ["efficiency", "api-testing"],
+  "openspec-reviewer-architecture": ["efficiency", "tool-improvement", "architecture"],
+  "openspec-reviewer-maintainability": ["efficiency", "tool-improvement"],
+  "openspec-reviewer-performance": ["efficiency", "tool-improvement"],
+  "openspec-reviewer-security": ["efficiency", "tool-improvement", "security"],
+  "openspec-reviewer-style": ["efficiency", "tool-improvement", "api-design", "db-design"],
 }
 
 const __skillsDir = resolve(
@@ -56,9 +24,10 @@ const __skillsDir = resolve(
   "assets", "skills"
 )
 
-function scanCapabilities(): Map<string, string[]> {
-  const map = new Map<string, string[]>()
-  if (!existsSync(__skillsDir)) return map
+function scanSkills(): { tagMap: Map<string, string[]>; skillTags: Map<string, string[]> } {
+  const tagMap = new Map<string, string[]>()
+  const skillTags = new Map<string, string[]>()
+  if (!existsSync(__skillsDir)) return { tagMap, skillTags }
   for (const entry of readdirSync(__skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
     const mdPath = resolve(__skillsDir, entry.name, "SKILL.md")
@@ -67,66 +36,82 @@ function scanCapabilities(): Map<string, string[]> {
       const raw = readFileSync(mdPath, "utf-8")
       const m = raw.match(/capabilities:\s*\[([^\]]*)\]/)
       if (!m) continue
-      for (const tag of m[1].split(",").map(s => s.trim().replace(/["']/g, "")).filter(Boolean)) {
-        const arr = map.get(tag) || []
+      const tags = m[1].split(",").map(s => s.trim().replace(/["']/g, "")).filter(Boolean)
+      skillTags.set(entry.name, tags)
+      for (const tag of tags) {
+        const arr = tagMap.get(tag) || []
         arr.push(entry.name)
-        map.set(tag, arr)
+        tagMap.set(tag, arr)
       }
     } catch { /* skip unreadable */ }
   }
-  return map
+  return { tagMap, skillTags }
 }
 
-function renderSkillSuggestions(agent: string): string[] {
-  const pair = AGENT_CAPABILITY_SUGGESTIONS[agent]
-  if (!pair) return []
-  const [must, onDemand] = pair
-  const skillMap = scanCapabilities()
+function renderSkillSuggestions(agent: string, caps: string[]): string[] {
+  if (caps.length === 0) return []
+  const { tagMap, skillTags } = scanSkills()
 
-  const lines: string[] = []
-  lines.push("## Skill 加载清单", "")
-  lines.push("用 Skill tool 逐个加载以下 skill，未找到时跳过：", "")
-
-  const rendered = new Set<string>()
-  function addGroup(label: string, caps: string[]) {
-    const names: string[] = []
-    for (const cap of caps) {
-      for (const n of skillMap.get(cap) || []) {
-        if (!rendered.has(n)) { rendered.add(n); names.push(n) }
-      }
-    }
-    if (names.length > 0) lines.push(`- **${label}**: ${names.map(n => `\`${n}\``).join(", ")}`)
+  // Collect all matched skills (dedup)
+  const matched = new Set<string>()
+  for (const cap of caps) {
+    for (const n of tagMap.get(cap) || []) matched.add(n)
   }
 
-  addGroup("通用（必加载）", must)
-  addGroup("按场景", onDemand)
+  const lines: string[] = []
+  if (matched.size === 0) return lines
+
+  lines.push("## Skill 加载清单", "")
+  lines.push("用 Skill tool 逐个加载以下 skill，未找到时跳过。", "")
+  lines.push("技术栈特定 skill 仅当项目匹配时加载。", "")
+
+  // Categorize: generic vs tech-stack-specific
+  const generic: string[] = []
+  const techStack = new Map<string, string[]>() // stackTag → [skill names]
+
+  for (const name of matched) {
+    const tags = skillTags.get(name) || []
+    const stackTag = tags.find(t => t.startsWith("tech-stack-"))
+    if (stackTag) {
+      const arr = techStack.get(stackTag) || []
+      arr.push(name)
+      techStack.set(stackTag, arr)
+    } else {
+      generic.push(name)
+    }
+  }
+
+  if (generic.length > 0) {
+    lines.push(`- **通用**: ${generic.map(n => `\`${n}\``).join(", ")}`)
+  }
+  for (const [stack, names] of techStack) {
+    const label = stack.replace("tech-stack-", "").toUpperCase()
+    lines.push(`- **${label} 技术栈**: ${names.map(n => `\`${n}\``).join(", ")}`)
+  }
+  lines.push("- 及其他相关 skill（在此清单外但 available_skills 中存在的，按需加载）")
+  lines.push("")
 
   // Collect boundary_hints from matched skills
-  const allCaps = [...must, ...onDemand]
   const hinted: string[] = []
-  for (const cap of allCaps) {
-    for (const name of skillMap.get(cap) || []) {
-      if (!rendered.has(name)) continue
-      const mdPath = resolve(__skillsDir, name, "SKILL.md")
-      try {
-        const raw = readFileSync(mdPath, "utf-8")
-        if (!raw.includes("boundary_hints:")) continue
-        const dm = raw.match(/directories:\s*\[([^\]]*)\]/)
-        if (dm) for (const d of dm[1].split(",").map(s => s.trim().replace(/["']/g, ""))) {
-          hinted.push(`- \`${name}\` → \`${d}\``)
-        }
-      } catch { /* skip */ }
-    }
+  for (const name of matched) {
+    const mdPath = resolve(__skillsDir, name, "SKILL.md")
+    try {
+      const raw = readFileSync(mdPath, "utf-8")
+      if (!raw.includes("boundary_hints:")) continue
+      const dm = raw.match(/directories:\s*\[([^\]]*)\]/)
+      if (dm) for (const d of dm[1].split(",").map(s => s.trim().replace(/["']/g, ""))) {
+        hinted.push(`- \`${name}\` → \`${d}\``)
+      }
+    } catch { /* skip */ }
   }
 
   if (hinted.length > 0) {
-    lines.push("")
     lines.push("## 路径提示（skill 声明的 boundary_hints）", "")
     lines.push("以下目录不受执行边界限制：", "")
     lines.push(...hinted)
+    lines.push("")
   }
 
-  lines.push("")
   return lines
 }
 
@@ -463,7 +448,7 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
       : "(tool)"
     : ""
   lines.push(`**当前阶段**: ${tg.status}${arcReviewLayer}`, "")
-  lines.push(...renderSkillSuggestions("openspec-architect"))
+  lines.push(...renderSkillSuggestions("openspec-architect", AGENT_CAPABILITY_SUGGESTIONS["openspec-architect"]))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 推荐阅读文档", "")
   lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
@@ -522,7 +507,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   const lines: string[] = []
   lines.push("# 开发上下文", "")
   lines.push(`当前阶段: ${tg.status}`, "")
-  lines.push(...renderSkillSuggestions("openspec-developer"))
+  lines.push(...renderSkillSuggestions("openspec-developer", AGENT_CAPABILITY_SUGGESTIONS["openspec-developer"]))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 执行边界", "")
   if (tg.executionBoundary) {
@@ -611,7 +596,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
 export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): string {
   const lines: string[] = []
   lines.push("# 工具审核上下文", "")
-  lines.push(...renderSkillSuggestions("openspec-reviewer-tool"))
+  lines.push(...renderSkillSuggestions("openspec-reviewer-tool", AGENT_CAPABILITY_SUGGESTIONS["openspec-reviewer-tool"]))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
@@ -639,7 +624,7 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   const lines: string[] = []
   lines.push("# 任务审核上下文", "")
   lines.push(`**tool 层**: ${tg.phases.review.tool.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
-  lines.push(...renderSkillSuggestions("openspec-reviewer-task"))
+  lines.push(...renderSkillSuggestions("openspec-reviewer-task", AGENT_CAPABILITY_SUGGESTIONS["openspec-reviewer-task"]))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
@@ -692,7 +677,7 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   const lines: string[] = []
   lines.push(`# AI 审查上下文 — ${dimension}`, "")
   lines.push(`**task 层**: ${tg.phases.review.task.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
-  lines.push(...renderSkillSuggestions(agent))
+  lines.push(...renderSkillSuggestions(agent, AGENT_CAPABILITY_SUGGESTIONS[agent] || []))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")

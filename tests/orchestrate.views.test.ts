@@ -95,6 +95,9 @@ describe("视图「操作指引」段", () => {
     expect(output).toContain("Task (待完成)")
     expect(output).toContain("Skill 加载清单")
     expect(output).toContain("code-efficiency")
+    expect(output).toContain("API 测试")
+    expect(output).toContain("api-test")
+    expect(output).not.toContain("涉及 API 变更")
   })
 
   test("renderToolReviewView 含操作指引", () => {

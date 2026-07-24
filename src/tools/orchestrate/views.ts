@@ -561,13 +561,17 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   renderOptionalSection(lines, "Issue (已修复待验证)", sortIssuesByCategory(submittedIssues).map(renderIssueItem))
   const exemptionIssues = tg.issues.filter((i) => i.status === "exemption_requested")
   renderOptionalSection(lines, "Issue (豁免裁定中)", sortIssuesByCategory(exemptionIssues).map(renderIssueItem))
+  const { tagMap } = scanSkills()
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
   lines.push("1. 按「Task (待完成)」逐项实施（仅限上方「执行边界」内）")
   lines.push("2. 按 issue 中 suggestion 修复「Issue (待修复 · Low 及以上，必办)」；Info 建议修复")
   lines.push("3. 不可修 issue → opx_dev_submit(request_exempts=[...])")
-  lines.push("4. 涉及 API 变更 → 按 api-test skill 约定编写/更新 API 测试脚本并执行，确认全部通过")
+  const apiTestSkills = tagMap.get("api-testing") || []
+  if (apiTestSkills.length > 0) {
+    lines.push(`4. API 测试：按 ${apiTestSkills[0]} skill 约定编写/更新 API HTTP 测试脚本并执行，确认全部通过`)
+  }
   lines.push("5. 全部完成 → commit → opx_dev_submit(outcome=\"completed\")")
   lines.push("6. 遇外部依赖/凭证/真实输入缺失无法继续 → opx_dev_submit(outcome=\"blocked\")")
   return lines.join("\n")

@@ -4,6 +4,63 @@ import { SEVERITY_LEVELS, DIMENSION_AGENT_MAP, MAX_RETRIES } from "./constants.j
 import { deriveStatus, isReviewCompleted, allTasksVerified, deriveCurrentAgents, isBlockingIssue, isStatusUnresolved } from "./derive.js"
 
 /**
+ * 各 agent 能力标签建议映射。
+ * 工具产出中的 skill 加载指引，不依赖 agent md 指令。
+ * 键为 agent 名，值为 [必加载标签列表, 按需加载标签列表]。
+ */
+const AGENT_CAPABILITY_SUGGESTIONS: Record<string, [string[], string[]]> = {
+  "openspec-architect": [
+    ["efficiency"],
+    ["architecture", "api-design"],
+  ],
+  "openspec-developer": [
+    ["efficiency"],
+    ["api-testing", "api-design", "architecture", "db-design", "security"],
+  ],
+  "openspec-reviewer-tool": [
+    ["efficiency", "quality-gate"],
+    [],
+  ],
+  "openspec-reviewer-task": [
+    ["efficiency"],
+    ["api-testing"],
+  ],
+  "openspec-reviewer-architecture": [
+    ["efficiency"],
+    ["tool-improvement", "architecture", "api-design"],
+  ],
+  "openspec-reviewer-maintainability": [
+    ["efficiency"],
+    ["tool-improvement", "db-design"],
+  ],
+  "openspec-reviewer-performance": [
+    ["efficiency"],
+    ["tool-improvement", "security"],
+  ],
+  "openspec-reviewer-security": [
+    ["efficiency"],
+    ["tool-improvement", "security"],
+  ],
+  "openspec-reviewer-style": [
+    ["efficiency"],
+    ["tool-improvement", "api-design", "db-design"],
+  ],
+}
+
+function renderSkillSuggestions(agent: string): string[] {
+  const pair = AGENT_CAPABILITY_SUGGESTIONS[agent]
+  if (!pair) return []
+  const [must, onDemand] = pair
+  const lines: string[] = []
+  lines.push("## Skill 加载建议", "")
+  lines.push("在 available_skills 中查找 Capability 含以下标签的 skill 并加载。未找到时降级继续。", "")
+  if (must.length > 0) lines.push(`- **必加载**: \`${must.join("`, `")}\``)
+  if (onDemand.length > 0) lines.push(`- **按需**: \`${onDemand.join("`, `")}\``)
+  lines.push("")
+  return lines
+}
+
+/**
  * 渲染 worktree 信息段落（含路径、分支、diff 范围及操作约束）。
  * 所有子代理视图共享相同段落，避免多处复制。
  */
@@ -336,6 +393,7 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
       : "(tool)"
     : ""
   lines.push(`**当前阶段**: ${tg.status}${arcReviewLayer}`, "")
+  lines.push(...renderSkillSuggestions("openspec-architect"))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 推荐阅读文档", "")
   lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
@@ -394,6 +452,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   const lines: string[] = []
   lines.push("# 开发上下文", "")
   lines.push(`当前阶段: ${tg.status}`, "")
+  lines.push(...renderSkillSuggestions("openspec-developer"))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 执行边界", "")
   if (tg.executionBoundary) {
@@ -482,6 +541,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
 export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState): string {
   const lines: string[] = []
   lines.push("# 工具审核上下文", "")
+  lines.push(...renderSkillSuggestions("openspec-reviewer-tool"))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
@@ -509,6 +569,7 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   const lines: string[] = []
   lines.push("# 任务审核上下文", "")
   lines.push(`**tool 层**: ${tg.phases.review.tool.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
+  lines.push(...renderSkillSuggestions("openspec-reviewer-task"))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
@@ -561,6 +622,7 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   const lines: string[] = []
   lines.push(`# AI 审查上下文 — ${dimension}`, "")
   lines.push(`**task 层**: ${tg.phases.review.task.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
+  lines.push(...renderSkillSuggestions(agent))
   lines.push(...renderWorktreeSection(tg))
   lines.push("## 上轮变更文件", "")
   if (tg.lastFilesChanged.length === 0) lines.push("- (无)")

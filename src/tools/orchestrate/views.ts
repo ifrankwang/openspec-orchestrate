@@ -139,6 +139,13 @@ function renderWorktreeSection(tg: TaskGroupState): string[] {
   return lines
 }
 
+function renderOptionalSection(lines: string[], title: string, content: string[]): void {
+  if (content.length === 0) return
+  lines.push(`## ${title}`, "")
+  lines.push(...content)
+  lines.push("")
+}
+
 /**
  * 智能缩短文件路径展示。
  * 短路径（≤60 字符）原样返回；长路径取末两段 + "..." 前缀。
@@ -224,7 +231,7 @@ export function renderLayerIssues(
   const exemptionRequested = sortIssuesByCategory(filtered.filter((i) => i.status === "exemption_requested"))
 
   if (submitted.length === 0 && exemptionRequested.length === 0) {
-    return ["- (无)", ""]
+    return []
   }
 
   if (submitted.length > 0) {
@@ -277,19 +284,15 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
   const reviewStatus = isReviewCompleted(tg) ? "✓" : (tg.status === "review" ? `● ${reviewLayer}` : "✗")
   lines.push(`| review | ${reviewStatus} |`)
   lines.push("")
-  lines.push("## Blocker", "")
-  if (tg.blockers.length === 0) {
-    lines.push("- (无)")
-  } else {
-    for (const blocker of tg.blockers) {
-      lines.push(`- Blocker #${blocker.id} | ${blocker.status} | ${blocker.category}`)
-      lines.push(`  - 来源：${blocker.sourceRole}${blocker.taskId ? `；Task #${blocker.taskId}` : ""}`)
-      lines.push(`  - 描述：${blocker.description}`)
-      if (blocker.userResponse) lines.push(`  - 用户答复：${blocker.userResponse}`)
-      if (blocker.architectConclusion) lines.push(`  - 架构结论：${blocker.architectConclusion}`)
-    }
+  const blockerLines: string[] = []
+  for (const blocker of tg.blockers) {
+    blockerLines.push(`- Blocker #${blocker.id} | ${blocker.status} | ${blocker.category}`)
+    blockerLines.push(`  - 来源：${blocker.sourceRole}${blocker.taskId ? `；Task #${blocker.taskId}` : ""}`)
+    blockerLines.push(`  - 描述：${blocker.description}`)
+    if (blocker.userResponse) blockerLines.push(`  - 用户答复：${blocker.userResponse}`)
+    if (blocker.architectConclusion) blockerLines.push(`  - 架构结论：${blocker.architectConclusion}`)
   }
-  lines.push("")
+  renderOptionalSection(lines, "Blocker", blockerLines)
   lines.push("## Task 摘要", "")
   lines.push(`| 状态 | 数量 |`)
   lines.push(`|------|------|`)
@@ -459,31 +462,23 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
   lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
   lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
   lines.push(`- \`openspec/changes/${state.changeId}/tasks.md\``)
-  if (tg.relevantSpecs.length === 0) {
-    lines.push("- (无 spec 文件)")
-  } else {
-    for (const s of tg.relevantSpecs) {
-      lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
-    }
+  for (const s of tg.relevantSpecs) {
+    lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
   }
   lines.push("")
-  lines.push("## Blocker (待架构复核)", "")
   const unresolvedBlockers = tg.blockers.filter((blocker) => blocker.status !== "resolved")
-  if (unresolvedBlockers.length === 0) {
-    lines.push("- (无)")
-  } else {
-    for (const blocker of unresolvedBlockers) {
-      lines.push(`- Blocker #${blocker.id} | ${blocker.status} | ${blocker.category}`)
-      lines.push(`  - 来源：${blocker.sourceRole}${blocker.taskId ? `；Task #${blocker.taskId}` : ""}`)
-      lines.push(`  - 描述：${blocker.description}`)
-      lines.push(`  - 证据：${blocker.evidence}`)
-      lines.push(`  - 已尝试：${blocker.attemptedActions}`)
-      if (blocker.options.length > 0) lines.push(`  - 可选方案：${blocker.options.join("；")}`)
-      if (blocker.userResponse) lines.push(`  - 用户答复：${blocker.userResponse}`)
-      if (blocker.architectConclusion) lines.push(`  - 架构结论：${blocker.architectConclusion}`)
-    }
+  const archBlockerLines: string[] = []
+  for (const blocker of unresolvedBlockers) {
+    archBlockerLines.push(`- Blocker #${blocker.id} | ${blocker.status} | ${blocker.category}`)
+    archBlockerLines.push(`  - 来源：${blocker.sourceRole}${blocker.taskId ? `；Task #${blocker.taskId}` : ""}`)
+    archBlockerLines.push(`  - 描述：${blocker.description}`)
+    archBlockerLines.push(`  - 证据：${blocker.evidence}`)
+    archBlockerLines.push(`  - 已尝试：${blocker.attemptedActions}`)
+    if (blocker.options.length > 0) archBlockerLines.push(`  - 可选方案：${blocker.options.join("；")}`)
+    if (blocker.userResponse) archBlockerLines.push(`  - 用户答复：${blocker.userResponse}`)
+    if (blocker.architectConclusion) archBlockerLines.push(`  - 架构结论：${blocker.architectConclusion}`)
   }
-  lines.push("")
+  renderOptionalSection(lines, "Blocker (待架构复核)", archBlockerLines)
   
   lines.push("## 操作指引", "")
   lines.push("")
@@ -542,51 +537,29 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   lines.push("## 推荐阅读文档", "")
   lines.push(`- \`openspec/changes/${state.changeId}/clarify.md\``)
   lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
-  if (tg.relevantSpecs.length === 0) lines.push("- (无 spec 文件)")
-  else for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
+  for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
   lines.push("")
-  lines.push("## Task (待完成)", "")
   const openTasks = tg.tasks.filter((t) => t.status === "open")
-  if (openTasks.length === 0) lines.push("- (无)")
-  else for (const t of openTasks) lines.push(renderTaskItem(t))
-  lines.push("")
-  lines.push("## Task (待验证)", "")
-  const submitted = tg.tasks.filter((t) => t.status === "submitted")
-  if (submitted.length === 0) lines.push("- (无)")
-  else for (const t of submitted) lines.push(renderTaskItem(t))
-  lines.push("")
-  lines.push("## Task (已驳回)", "")
+  renderOptionalSection(lines, "Task (待完成)", openTasks.map(renderTaskItem))
+  const devSubmitted = tg.tasks.filter((t) => t.status === "submitted")
+  renderOptionalSection(lines, "Task (待验证)", devSubmitted.map(renderTaskItem))
   const rejectedTasks = tg.tasks.filter((t) => t.status === "rejected")
-  if (rejectedTasks.length === 0) lines.push("- (无)")
-  else for (const t of rejectedTasks) {
+  renderOptionalSection(lines, "Task (已驳回)", rejectedTasks.map(t => {
     const reason = t.rejectReason ? `  - 驳回原因：${t.rejectReason}` : ""
-    lines.push(`${renderTaskItem(t)}${reason ? `\n${reason}` : ""}`)
-  }
-  lines.push("")
-  lines.push("## Issue (待修复 · Low 及以上，必办)", "")
+    return `${renderTaskItem(t)}${reason ? `\n${reason}` : ""}`
+  }))
   const blockingIssues = tg.issues.filter(
     (i) => (i.status === "open" || i.status === "rejected") && isBlockingIssue(i)
   )
-  if (blockingIssues.length === 0) lines.push("- (无)")
-  else for (const i of sortIssuesByCategory(blockingIssues)) lines.push(renderIssueItem(i))
-  lines.push("")
-  lines.push("## Issue (待修复 · Info，建议修复，不阻塞提交)", "")
+  renderOptionalSection(lines, "Issue (待修复 · Low 及以上，必办)", sortIssuesByCategory(blockingIssues).map(renderIssueItem))
   const infoFix = tg.issues.filter(
     (i) => (i.status === "open" || i.status === "rejected") && !isBlockingIssue(i)
   )
-  if (infoFix.length === 0) lines.push("- (无)")
-  else for (const i of sortIssuesByCategory(infoFix)) lines.push(renderIssueItem(i))
-  lines.push("")
-  lines.push("## Issue (已修复待验证)", "")
+  renderOptionalSection(lines, "Issue (待修复 · Info，建议修复，不阻塞提交)", sortIssuesByCategory(infoFix).map(renderIssueItem))
   const submittedIssues = tg.issues.filter((i) => i.status === "submitted")
-  if (submittedIssues.length === 0) lines.push("- (无)")
-  else for (const i of sortIssuesByCategory(submittedIssues)) lines.push(renderIssueItem(i))
-  lines.push("")
-  lines.push("## Issue (豁免裁定中)", "")
+  renderOptionalSection(lines, "Issue (已修复待验证)", sortIssuesByCategory(submittedIssues).map(renderIssueItem))
   const exemptionIssues = tg.issues.filter((i) => i.status === "exemption_requested")
-  if (exemptionIssues.length === 0) lines.push("- (无)")
-  else for (const i of sortIssuesByCategory(exemptionIssues)) lines.push(renderIssueItem(i))
-  lines.push("")
+  renderOptionalSection(lines, "Issue (豁免裁定中)", sortIssuesByCategory(exemptionIssues).map(renderIssueItem))
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("1. 按「Task (待完成)」逐项实施（仅限上方「执行边界」内）")
@@ -603,13 +576,9 @@ export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState
   lines.push("# 工具审核上下文", "")
   lines.push(...renderSkillSuggestions("openspec-reviewer-tool", AGENT_CAPABILITY_SUGGESTIONS["openspec-reviewer-tool"]))
   lines.push(...renderWorktreeSection(tg))
-  lines.push("## 上轮变更文件", "")
-  if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
-  else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
-  lines.push("")
-  lines.push("## 全部 Issue（tool 层可见）", "")
-  lines.push(...renderLayerIssues(tg.issues, "tool"))
-  lines.push("")
+  renderOptionalSection(lines, "上轮变更文件", tg.lastFilesChanged.map(f => `- \`${f}\``))
+  const toolIssues = renderLayerIssues(tg.issues, "tool")
+  renderOptionalSection(lines, "全部 Issue（tool 层可见）", toolIssues)
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("1. 加载质量门 skill，获取工具清单、执行命令与 issue 映射表")
@@ -631,36 +600,25 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   lines.push(`**tool 层**: ${tg.phases.review.tool.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
   lines.push(...renderSkillSuggestions("openspec-reviewer-task", AGENT_CAPABILITY_SUGGESTIONS["openspec-reviewer-task"]))
   lines.push(...renderWorktreeSection(tg))
-  lines.push("## 上轮变更文件", "")
-  if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
-  else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
-  lines.push("")
+  renderOptionalSection(lines, "上轮变更文件", tg.lastFilesChanged.map(f => `- \`${f}\``))
   lines.push("## 推荐阅读文档", "")
   lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
-  if (tg.relevantSpecs.length === 0) lines.push("- (无 spec 文件)")
-  else for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
+  for (const s of tg.relevantSpecs) lines.push(`- \`openspec/changes/${state.changeId}/specs/${s}/spec.md\``)
   lines.push("")
   if (tg.executionBoundary?.notes) {
     lines.push("## 实施指引", "")
     lines.push(tg.executionBoundary.notes)
     lines.push("")
   }
-  lines.push("## Task (待验证)", "")
-  const submitted = tg.tasks.filter((t) => t.status === "submitted")
-  if (submitted.length === 0) lines.push("- (无)")
-  else for (const t of submitted) lines.push(renderTaskItem(t))
-  lines.push("")
-  lines.push("## Task (已驳回)", "")
-  const rejected = tg.tasks.filter((t) => t.status === "rejected")
-  if (rejected.length === 0) lines.push("- (无)")
-  else for (const t of rejected) {
+  const reviewSubmitted = tg.tasks.filter((t) => t.status === "submitted")
+  renderOptionalSection(lines, "Task (待验证)", reviewSubmitted.map(renderTaskItem))
+  const reviewRejected = tg.tasks.filter((t) => t.status === "rejected")
+  renderOptionalSection(lines, "Task (已驳回)", reviewRejected.map(t => {
     const reason = t.rejectReason ? `  - 驳回原因：${t.rejectReason}` : ""
-    lines.push(`${renderTaskItem(t)}${reason ? `\n${reason}` : ""}`)
-  }
-  lines.push("")
-  lines.push("## 审查 Issue", "")
-  lines.push(...renderLayerIssues(tg.issues, "task"))
-  lines.push("")
+    return `${renderTaskItem(t)}${reason ? `\n${reason}` : ""}`
+  }))
+  const taskIssues = renderLayerIssues(tg.issues, "task")
+  renderOptionalSection(lines, "审查 Issue", taskIssues)
   lines.push("## 操作指引", "")
   lines.push("")
   const hasGuidance = !!tg.executionBoundary?.notes
@@ -684,10 +642,7 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   lines.push(`**task 层**: ${tg.phases.review.task.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
   lines.push(...renderSkillSuggestions(agent, AGENT_CAPABILITY_SUGGESTIONS[agent] || []))
   lines.push(...renderWorktreeSection(tg))
-  lines.push("## 上轮变更文件", "")
-  if (tg.lastFilesChanged.length === 0) lines.push("- (无)")
-  else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
-  lines.push("")
+  renderOptionalSection(lines, "上轮变更文件", tg.lastFilesChanged.map(f => `- \`${f}\``))
   if (dimension === "architecture") {
     lines.push("## 推荐阅读文档", "")
     lines.push(`- \`openspec/changes/${state.changeId}/design.md\``)
@@ -704,9 +659,8 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
     "> 回归排查：对照上述「上轮变更文件」，检查本次修复是否在本维度引入了新问题；发现即在本维度报新 issue。",
     ""
   )
-  lines.push("## 本维度 Issue", "")
-  lines.push(...renderLayerIssues(tg.issues, "quality", dimension))
-  lines.push("")
+  const qualityIssues = renderLayerIssues(tg.issues, "quality", dimension)
+  renderOptionalSection(lines, "本维度 Issue", qualityIssues)
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("1. 逐文件审查「上轮变更文件」，按本维度审查标准发现问题")

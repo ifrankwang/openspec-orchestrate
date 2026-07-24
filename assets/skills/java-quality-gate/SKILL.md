@@ -49,13 +49,13 @@ sonar-scanner --version
 ## 1. 编译检查
 
 ```bash
-mvn verify -q
+mvn verify -q; echo "BUILD_STATUS=$?"
 ```
 
 说明：`mvn verify` 包含 compile + test + spotless:check + pmd:check 等阶段。
 
-- 通过：编译无错误，输出 "BUILD SUCCESS"
-- 不通过：→ 工具层 issue，severity=Critical，developer 必须修复
+- 通过：`BUILD_STATUS=0`
+- 不通过：`BUILD_STATUS≠0` → 工具层 issue，severity=Critical，developer 必须修复
 
 ## 2. 代码格式检查
 

@@ -419,7 +419,7 @@ export const tool_review_submit = tool({
       })
     }
 
-    const retryResult = handleRetryCheckpoint(tg)
+    const retryResult = handleRetryCheckpoint(tg, state.unattended)
     if (retryResult === null) {
       await writeState(context.worktree, state)
       return JSON.stringify({
@@ -599,7 +599,7 @@ export const task_review_submit = tool({
       })
     }
 
-    const retryResult = handleRetryCheckpoint(tg)
+    const retryResult = handleRetryCheckpoint(tg, state.unattended)
     if (retryResult === null) {
       await writeState(context.worktree, state)
       return JSON.stringify({

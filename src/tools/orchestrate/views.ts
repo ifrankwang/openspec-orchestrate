@@ -215,7 +215,11 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
     }
     if (unregistered.length > 0) {
       lines.push("")
-      lines.push(`⚠️ 发现 ${unregistered.length} 个未注册到状态文件的 worktree，请用 question 询问用户是否恢复，确认后调用 opx_orch_init(recovery=...) 恢复。`)
+      if (state.unattended) {
+        lines.push(`⚠️ 发现 ${unregistered.length} 个未注册到状态文件的 worktree，（无人值守模式）跳过恢复，继续执行。`)
+      } else {
+        lines.push(`⚠️ 发现 ${unregistered.length} 个未注册到状态文件的 worktree，请用 question 询问用户是否恢复，确认后调用 opx_orch_init(recovery=...) 恢复。`)
+      }
       for (const w of unregistered) {
         const match = w.branch.match(/^task-group\/(\d+)$/)
         const tgId = match ? match[1] : "?"
@@ -260,7 +264,11 @@ export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupSta
   if (checks.length > 0) {
     lines.push(...checks)
     lines.push("")
-    lines.push("请用 question 向用户展示上述异常，确认后按对应建议调用 opx_orch_init(recovery=...) 修复。")
+    if (state.unattended) {
+      lines.push("（无人值守模式）以上异常将自动执行 recovery。")
+    } else {
+      lines.push("请用 question 向用户展示上述异常，确认后按对应建议调用 opx_orch_init(recovery=...) 修复。")
+    }
   } else {
     lines.push("未发现状态异常。")
   }
@@ -373,7 +381,11 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
   lines.push("   - 任务排列是否合理？（基础架构类任务应在更早完成）")
   lines.push("  4. 可本地修复的问题（仅限 md 文件）→ edit；信息缺口 → opx_arch_blocker")
   lines.push("5. 识别任务中是否已存在通用做法（识别方式见项目 AGENTS.md/CLAUDE.md）：有则注明 dev 须遵循现有做法（任务明确要求换做法除外）；无但判断应做成通用做法的，在 notes 注明拓展性要求")
-  lines.push("  6. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理（user_response+blocker_id），缺用户答复用 question 工具收集")
+  if (state.unattended) {
+    lines.push("  6. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理；缺用户答复时自行推断决策后标记 resolved（无人值守模式）")
+  } else {
+    lines.push("  6. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理（user_response+blocker_id），缺用户答复用 question 工具收集")
+  }
   lines.push("7. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")")
   return lines.join("\n")
 }
@@ -481,7 +493,11 @@ export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState
   lines.push("")
   lines.push("1. 加载质量门 skill，获取工具清单、执行命令与 issue 映射表")
   lines.push("2. 按质量门 skill 定义顺序逐项执行工具检查（环境检查 → 编译 → 格式 → 架构约束 → 静态分析 → 测试编译与覆盖率 → 深度扫描 → 工具配置检查）")
-  lines.push("3. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈用 question 提请用户裁定")
+  if (state.unattended) {
+    lines.push("3. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈时记 skipped 并说明理由（无人值守模式）")
+  } else {
+    lines.push("3. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈用 question 提请用户裁定")
+  }
   lines.push("4. 按质量门 skill 映射表将工具输出翻译为统一 issue")
   lines.push("5. 核验「待确认」存量 issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入（工具自动回退为 rejected）")
   lines.push("6. 汇总 → opx_tool_review_submit")

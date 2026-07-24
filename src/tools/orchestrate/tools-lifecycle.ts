@@ -454,6 +454,23 @@ export const status = tool({
   },
 })
 
+export const set_unattended = tool({
+  description:
+    "开启/关闭无人值守模式。开启后编排流程在重试检查点、状态异常、blocker 处理等场景不再 question 用户，自动决策。",
+  args: {
+    enabled: tool.schema.boolean().default(true).describe("true=开启；false=关闭"),
+  },
+  async execute(args, context) {
+    assertOrchestrator(context, "opx_orch_set_unattended")
+    const state = await readStateByWorktree(context.worktree)
+    if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
+    state.unattended = args.enabled
+    await writeState(context.worktree, state)
+    const status = args.enabled ? "开启" : "关闭"
+    return `无人值守模式已 **${status}**。启用后系统将自动处理决策点，不再 question 用户。`
+  },
+})
+
 export const complete_task_group = tool({
   description:
     "完成任务组收尾：合并 task-group 分支到 baseBranch → 清理 worktree 与分支。合并冲突时中止并返回 blocked（保留 worktree/分支）。",

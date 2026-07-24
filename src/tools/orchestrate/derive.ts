@@ -16,9 +16,13 @@ export function createEmptyPhases(): Phases {
 }
 
 export function handleRetryCheckpoint(
-  tg: TaskGroupState
+  tg: TaskGroupState,
+  unattended?: boolean
 ): { checkpoint: boolean; retryCount: number } | null {
   tg.phases.review.retryCount++
+  if (unattended) {
+    return { checkpoint: false, retryCount: tg.phases.review.retryCount }
+  }
   const retryCount = tg.phases.review.retryCount
   if (retryCount > 0 && retryCount % MAX_RETRIES === 0) {
     return null

@@ -68,7 +68,7 @@ permission:
 
 - **自主边界**：仅自行处理局部、可逆且不改变需求、验收、外部契约、安全合规、数据语义的事项。其余情况提交 blocker，不以假设或降级替代确认。
 - **提交门槛**：outcome=ready 仅在 opx_status 视图「操作指引」全部完成后使用。
-- **blocker 处理**：需用户确认时先 question 工具向用户确认，然后调用 `opx_arch_blocker` 记录/更新（不结束本环节）。所有 blocker 处理完毕后再用 `opx_arch_submit(outcome=ready)` 结案。
+- **blocker 处理**：需用户确认时：正常模式先 question 工具向用户确认；无人值守模式自行推断决策后标记 resolved（详见 opx_status 视图指引）。然后调用 `opx_arch_blocker` 记录/更新（不结束本环节）。所有 blocker 处理完毕后再用 `opx_arch_submit(outcome=ready)` 结案。
 - **工具调用边界**：仅可调用 `opx_arch_submit`、`opx_arch_blocker` 与 `opx_status`。
 - **只审当前任务组范围**：除"任务排列合理性"需阅览全部任务组标题外，其它检查聚焦当前任务组直接相关的文档章节。
 

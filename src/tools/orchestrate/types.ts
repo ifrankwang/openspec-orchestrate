@@ -108,4 +108,5 @@ export interface OrchestrateState {
   taskGroups: TaskGroupState[]
   createdAt: string
   updatedAt: string
+  unattended?: boolean
 }

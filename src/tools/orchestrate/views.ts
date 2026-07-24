@@ -52,8 +52,8 @@ function renderSkillSuggestions(agent: string): string[] {
   if (!pair) return []
   const [must, onDemand] = pair
   const lines: string[] = []
-  lines.push("## Skill 加载建议", "")
-  lines.push("在 available_skills 中查找 Capability 含以下标签的 skill 并加载。未找到时降级继续。", "")
+  lines.push("## Skill 加载建议（按 Capability 搜索，禁止按 skill 名硬编码）", "")
+  lines.push("在 available_skills 中按 description 中 `Capability:` 标签搜索，找到 skill 名后用 Skill tool 加载。未找到时降级继续。", "")
   if (must.length > 0) lines.push(`- **必加载**: \`${must.join("`, `")}\``)
   if (onDemand.length > 0) lines.push(`- **按需**: \`${onDemand.join("`, `")}\``)
   lines.push("")

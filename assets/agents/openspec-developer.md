@@ -18,8 +18,8 @@ permission:
 
 ## 技能加载
 
-1. 按 `opx_status` 中「Skill 加载建议」查找 Capability 对应的 skill，用 Skill tool 加载
-2. 根据项目技术栈（构建配置文件）加载技术栈 skill，未找到时降级并在报告中标注
+1. 按 `opx_status` 中「Skill 加载建议」查找 Capability 对应的 skill（在 available_skills 中按 description 中 Capability: 标签搜索，找到 skill 名后通过 Skill tool 加载），未找到时降级
+2. 识别技术栈后，同样按 Capability 含 `tech-stack-<lang>` 的标签搜索对应 skill（禁止按 skill 名硬编码加载），未找到时降级并在报告中标注
 3. 若加载的 skill 声明了 `boundary_hints`（`directories`/`packages`），相关路径不受执行边界限制
 
 ## 文档阅读关注点

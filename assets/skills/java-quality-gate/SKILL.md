@@ -1,14 +1,14 @@
 ---
 name: java-quality-gate
-description: 仅限 Java 后端开发场景。确定性质量门工具集。Phase 3 tool review 阶段由 openspec-reviewer-tool 加载，用于执行 spotless / ArchUnit / PMD / mvn test / SonarQube 等 Java 项目确定性工具检查，将违规项映射为统一 issue 结构并跨维提交（归属于 5 维之一）。
+description: 仅限 Java 后端开发场景。确定性质量门工具集。Tool review 由 openspec-reviewer-tool 加载，用于执行 spotless / ArchUnit / PMD / mvn test / SonarQube 等 Java 项目确定性工具检查，将违规项映射为统一 issue 结构并跨维提交（归属于 5 维之一）。
 ---
 
 ## 适用范围
 
-本 skill 仅供 **Phase 3 tool review** 的 `openspec-reviewer-tool` 加载。工具 reviewer 执行本 skill 中的所有工具检查，并将结果通过 `opx_tool_review_submit` 提交。
+本 skill 仅供 **Tool review** 的 `openspec-reviewer-tool` 加载。工具 reviewer 执行本 skill 中的所有工具检查，并将结果通过 `opx_tool_review_submit` 提交。
 
 **不适用场景**：
-- Phase 3 quality review 的 reviewer 不加载本 skill——他们自行按维度审查代码。
+- Quality reviewer（architecture/maintainability/style/performance/security）不加载本 skill——他们自行按维度审查代码。
 - developer 不加载本 skill
 
 ## 通用步骤
@@ -70,7 +70,7 @@ mvn spotless:check
 ## 3. 架构约束检查
 
 ```bash
-mvn test -Dtest="ArchitectureTest"
+mvn test -Dtest="*Architecture*,*ArchRule*"
 ```
 
 - 通过：所有 ArchUnit 测试通过

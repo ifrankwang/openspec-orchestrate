@@ -93,6 +93,42 @@ export function renderIssueItem(i: IssueItem): string {
   return lines.join("\n")
 }
 
+export function renderLayerIssues(
+  issues: IssueItem[],
+  sourcePhase: string,
+  dimension?: string,
+): string[] {
+  const lines: string[] = []
+
+  let filtered = issues.filter((i) => i.sourcePhase === sourcePhase)
+  if (dimension) filtered = filtered.filter((i) => i.dimension === dimension)
+
+  const submitted = sortIssuesByCategory(filtered.filter((i) => i.status === "submitted"))
+  const exemptionRequested = sortIssuesByCategory(filtered.filter((i) => i.status === "exemption_requested"))
+
+  if (submitted.length === 0 && exemptionRequested.length === 0) {
+    return ["- (无)", ""]
+  }
+
+  if (submitted.length > 0) {
+    lines.push("### 待确认", "")
+    lines.push(
+      "> 存量确认：逐条核验上述「待确认」issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入，工具将自动回退为 rejected 交 developer 重修。",
+      ""
+    )
+    for (const i of submitted) lines.push(renderIssueItem(i))
+    lines.push("")
+  }
+
+  if (exemptionRequested.length > 0) {
+    lines.push("### 豁免裁定中", "")
+    for (const i of exemptionRequested) lines.push(renderIssueItem(i))
+    lines.push("")
+  }
+
+  return lines
+}
+
 export function renderOrchestratorView(state: OrchestrateState, tg: TaskGroupState, diskWorktrees?: { branch: string; path: string }[]): string {
   const ts = taskSummary(tg.tasks)
   const is = issueSummary(tg.issues)
@@ -439,17 +475,7 @@ export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState
   else for (const f of tg.lastFilesChanged) lines.push(`- \`${f}\``)
   lines.push("")
   lines.push("## 全部 Issue（tool 层可见）", "")
-  const allIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "tool" && (i.status === "open" || i.status === "submitted" || i.status === "exemption_requested")
-  )
-  if (allIssues.length === 0) lines.push("- (无)")
-  else for (const i of sortIssuesByCategory(allIssues)) {
-    const dimTag = `[${i.dimension}]`
-    lines.push(`- ${dimTag} Issue #${i.id} | ${formatSeverity(i.severity)} | ${formatFilePath(i.file, i.line)}`)
-    lines.push(`  - 描述：${i.description}`)
-    if (i.suggestion) lines.push(`  - 建议：${i.suggestion}`)
-    if (i.status === "exemption_requested" && i.exemptReason) lines.push(`  - 豁免理由：${i.exemptReason}`)
-  }
+  lines.push(...renderLayerIssues(tg.issues, "tool"))
   lines.push("")
   lines.push("## 操作指引", "")
   lines.push("")
@@ -457,7 +483,8 @@ export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState
   lines.push("2. 按质量门 skill 定义顺序逐项执行工具检查（环境检查 → 编译 → 格式 → 架构约束 → 静态分析 → 测试编译与覆盖率 → 深度扫描 → 工具配置检查）")
   lines.push("3. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈用 question 提请用户裁定")
   lines.push("4. 按质量门 skill 映射表将工具输出翻译为统一 issue")
-  lines.push("5. 汇总 → opx_tool_review_submit")
+  lines.push("5. 核验「待确认」存量 issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入（工具自动回退为 rejected）")
+  lines.push("6. 汇总 → opx_tool_review_submit")
   return lines.join("\n")
 }
 
@@ -493,14 +520,8 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
     lines.push(`${renderTaskItem(t)}${reason ? `\n${reason}` : ""}`)
   }
   lines.push("")
-  const taskIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "task" && (i.status === "open" || i.status === "submitted" || i.status === "exemption_requested")
-  )
-  if (taskIssues.length > 0) {
-    lines.push("## 审查 Issue", "")
-    for (const i of taskIssues) lines.push(renderIssueItem(i))
-    lines.push("")
-  }
+  lines.push("## 审查 Issue", "")
+  lines.push(...renderLayerIssues(tg.issues, "task"))
   lines.push("")
   lines.push("## 操作指引", "")
   lines.push("")
@@ -512,6 +533,7 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   lines.push(`${stepNum++}. Task 产出验证：逐条核验「Task (待验证)」中每个 task 的产出（文件是否存在、目录是否非空、配置项/依赖是否就绪），按技术栈 skill 中构建命令验证编译`)
   lines.push(`${stepNum++}. 服务启动验证：启动基础设施 → 启动应用 → 健康检查轮询（60s）→ 识别新增/变更接口 → API 场景化测试（.http）（正常+边界）→ 记录结果 → 停止服务`)
   lines.push(`${stepNum++}. 测试代码审查：断言放水、边界缺失、Mock 过度、覆盖不足`)
+  lines.push(`${stepNum++}. 核验「审查 Issue」中「待确认」存量 issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入（工具自动回退为 rejected）`)
   lines.push(`${stepNum++}. 缺少验证所需真实资源/输入/凭证 → opx_task_review_submit(passed=false)，不得以 stub/降级/跳过判定通过`)
   lines.push(`${stepNum++}. 汇总 → opx_task_review_submit`)
   return lines.join("\n")
@@ -543,30 +565,8 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
     "> 回归排查：对照上述「上轮变更文件」，检查本次修复是否在本维度引入了新问题；发现即在本维度报新 issue。",
     ""
   )
-  const openIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "open"
-  )
-  lines.push("## 本维度 Issue (open)", "")
-  if (openIssues.length === 0) lines.push("- (无)")
-  else for (const i of openIssues) lines.push(renderIssueItem(i))
-  lines.push("")
-  const submittedIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "submitted"
-  )
-  lines.push("## 本维度 Issue (待确认)", "")
-  if (submittedIssues.length === 0) lines.push("- (无)")
-  else for (const i of submittedIssues) lines.push(renderIssueItem(i))
-  lines.push("")
-  lines.push(
-    "> 存量确认：逐条核验上述「待确认」issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入，工具将自动回退为 rejected 交 developer 重修。",
-    ""
-  )
-  const exemptionIssues = tg.issues.filter(
-    (i) => i.sourcePhase === "quality" && i.dimension === dimension && i.status === "exemption_requested"
-  )
-  lines.push("## 本维度 Issue (豁免裁定中)", "")
-  if (exemptionIssues.length === 0) lines.push("- (无)")
-  else for (const i of exemptionIssues) lines.push(renderIssueItem(i))
+  lines.push("## 本维度 Issue", "")
+  lines.push(...renderLayerIssues(tg.issues, "quality", dimension))
   lines.push("")
   lines.push("## 操作指引", "")
   lines.push("")

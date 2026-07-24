@@ -16,12 +16,6 @@ permission:
 
 调用 `opx_status` 自取上下文。
 
-## 工具改进
-
-若已加载工具规则改进类 skill，发现可工具化 pattern 时须报两条分离 issue：
-业务 issue（`file`=违规现场）+ 工具改进 issue（`file`=规则/配置文件，`line=0` 若待新建，`suggestion` 含规则草案 + 验证命令，末尾标 `[tool_eligible]`）。
-未加载时仅报业务 issue，跳过工具改进环节
-
 ## 严重级别
 
 使用统一严重级别体系（Critical / High / Medium / Low / Info）。

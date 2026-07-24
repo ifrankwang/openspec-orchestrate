@@ -24,6 +24,13 @@ const __skillsDir = resolve(
   "assets", "skills"
 )
 
+function getToolImprovementSkills(agent: string): string[] {
+  const caps = AGENT_CAPABILITY_SUGGESTIONS[agent]
+  if (!caps || !caps.includes("tool-improvement")) return []
+  const { tagMap } = scanSkills()
+  return tagMap.get("tool-improvement") || []
+}
+
 function scanSkills(): { tagMap: Map<string, string[]>; skillTags: Map<string, string[]> } {
   const tagMap = new Map<string, string[]>()
   const skillTags = new Map<string, string[]>()
@@ -646,6 +653,7 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
 export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupState, agent: string): string {
   const dimension = (Object.keys(DIMENSION_AGENT_MAP) as Dimension[]).find((d) => DIMENSION_AGENT_MAP[d] === agent) || ""
   const lines: string[] = []
+  const tiSkills = getToolImprovementSkills(agent)
   lines.push(`# AI 审查上下文 — ${dimension}`, "")
   lines.push(`**task 层**: ${tg.phases.review.task.completed ? "✓ 已完成" : "⏳ 待完成"}`, "")
   lines.push(...renderSkillSuggestions(agent, AGENT_CAPABILITY_SUGGESTIONS[agent] || []))
@@ -675,7 +683,14 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   lines.push("1. 逐文件审查「上轮变更文件」，按本维度审查标准发现问题")
   lines.push("2. 核验「本维度 Issue (待确认)」中每条是否真已修复 → fixed_issue_ids（未达标的不列入）")
   lines.push("3. 裁定「本维度 Issue (豁免裁定中)」→ exempt_issue_ids / rejected_issue_ids")
-  lines.push("4. 新发现的本维度问题 → 报 issue（severity 不可下调来使维度 passed）")
+  if (tiSkills.length > 0) {
+    lines.push("4. 新发现的本维度问题：")
+    lines.push("   - 优先判断此问题是否可通过工具配置统一解决")
+    lines.push(`   - 是 → 报业务 issue + 同时报工具改进 issue（suggestion 末尾标 [tool_eligible]），规则草案参考已加载的 \`${tiSkills[0]}\``)
+    lines.push("   - 否 → 报常规 issue（severity 不可下调来使维度 passed）")
+  } else {
+    lines.push("4. 新发现的本维度问题 → 报 issue（severity 不可下调来使维度 passed）")
+  }
   lines.push("5. 完成 → opx_quality_review_submit")
   return lines.join("\n")
 }

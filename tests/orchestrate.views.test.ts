@@ -182,6 +182,38 @@ describe("视图「操作指引」段", () => {
     expect(output).toContain("opx_quality_review_submit")
     expect(output).toContain("按本维度审查标准")
   })
+
+  test("renderQualityReviewView 含 tool-improvement skill 时展示工具改进子步骤", () => {
+    const state = mockState()
+    const tg = baseTg({
+      status: "review",
+      worktreePath: "/wt",
+      branchName: "tg-1",
+      baseRef: "base",
+      lastFilesChanged: ["src/Foo.java"],
+      issues: [mockIssue("1")],
+    })
+    const output = renderQualityReviewView(state, tg, "openspec-reviewer-architecture")
+    expect(output).toContain("优先判断此问题是否可通过工具配置统一解决")
+    expect(output).toContain("[tool_eligible]")
+    expect(output).toContain("java-quality-tool-improve")
+  })
+
+  test("renderQualityReviewView 无 tool-improvement skill 时走原始单行步骤 4", () => {
+    const state = mockState()
+    const tg = baseTg({
+      status: "review",
+      worktreePath: "/wt",
+      branchName: "tg-1",
+      baseRef: "base",
+      lastFilesChanged: ["src/Foo.java"],
+      issues: [mockIssue("1")],
+    })
+    const output = renderQualityReviewView(state, tg, "")
+    expect(output).toContain("新发现的本维度问题 → 报 issue")
+    expect(output).not.toContain("优先判断此问题是否可通过工具配置统一解决")
+    expect(output).not.toContain("[tool_eligible]")
+  })
 })
 
 describe("一致性分析 sourcePhase 过滤", () => {

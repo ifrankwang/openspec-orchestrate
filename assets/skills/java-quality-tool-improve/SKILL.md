@@ -1,21 +1,10 @@
 ---
 name: java-quality-tool-improve
-description: 仅限 Java 后端开发场景。工具规则改进指南。Quality reviewer（architecture/maintainability/style/performance/security）加载，用于将 Java 项目中可工具化的 pattern 转化为具体的 ArchUnit / PMD / Spotless / SonarQube 规则草案。原则：一个可工具化 pattern 报两条分离 issue——业务 issue（指违规现场）+ 工具改进 issue（指规则/配置文件，line=0 若待新建）。developer 按工具改进 issue 的 suggestion 直接实施。
+description: 仅限 Java 后端开发场景。工具规则改进指南。Quality reviewer（architecture/maintainability/style/performance/security）加载，用于将 Java 项目中可工具化的 pattern 转化为具体的 ArchUnit / PMD / Spotless / SonarQube 规则草案。skill 提供各场景下工具配置改动的信号表与规则模板。
 capabilities: ["tool-improvement", "tech-stack-java"]
 ---
 
 > **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。
-
-## 核心原则：两条分离 issue
-
-一个可工具化 pattern 必须报**两条独立 issue**：
-
-| 类型 | file | line | description | suggestion |
-|------|------|------|-------------|------------|
-| **业务 issue** | 违规业务代码路径 | 违规行号 | 描述该处违规 | 常规修复建议（不含 tool 信息） |
-| **工具改进 issue** | 规则/配置文件路径（如 `src/main/resources/pmd-rules.xml`） | `0`（待新建文件时，否则目标行号） | 描述应被工具拦截的 pattern | 规则草案 + 验证命令，末尾标注 `[tool_eligible]` |
-
-tool 改进 issue 的 `file` 指向工具配置文件而非业务代码，工具自动将其目录并入 developer 执行边界。
 
 ## 识别可工具化 pattern
 
@@ -133,16 +122,4 @@ sonar.issue.ignore.multicriteria.e1.resourceKey=**/model/*.java
 | SonarQube minor | — | Low |
 | Spotless 违规 | — | Low |
 
-## 输出要求
 
-reviewer 识别可工具化 pattern 后，报两条独立 issue：
-
-**业务 issue**（指向违规现场）：
-1. `file`：违规业务代码路径，`line`：违规行号
-2. `description`：描述该处违规
-3. `suggestion`：常规修复建议（不含工具规则信息）
-
-**工具改进 issue**（指向规则/配置文件，带上 `[tool_eligible]`）：
-1. `file`：规则/配置文件路径，`line=0`（待新建文件时）或目标行号（现有文件）
-2. `suggestion`：规则草案 + 验证命令（按上述模板），末尾标注 `[tool_eligible]`
-3. `description`：描述应被工具拦截的 pattern

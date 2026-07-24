@@ -62,8 +62,7 @@ function renderSkillSuggestions(agent: string, caps: string[]): string[] {
   if (matched.size === 0) return lines
 
   lines.push("## Skill 加载清单", "")
-  lines.push("用 Skill tool 逐个加载以下 skill，未找到时跳过。", "")
-  lines.push("技术栈特定 skill 仅当项目匹配时加载。", "")
+  lines.push("必须加载（逐项用 Skill tool 加载，未找到时跳过）：", "")
 
   // Categorize: generic vs tech-stack-specific
   const generic: string[] = []
@@ -81,14 +80,20 @@ function renderSkillSuggestions(agent: string, caps: string[]): string[] {
     }
   }
 
-  if (generic.length > 0) {
-    lines.push(`- **通用**: ${generic.map(n => `\`${n}\``).join(", ")}`)
+  for (const name of generic) {
+    lines.push(`- \`${name}\``)
   }
-  for (const [stack, names] of techStack) {
-    const label = stack.replace("tech-stack-", "").toUpperCase()
-    lines.push(`- **${label} 技术栈**: ${names.map(n => `\`${n}\``).join(", ")}`)
+  lines.push("")
+  if (techStack.size > 0) {
+    lines.push("仅当技术栈匹配时加载：", "")
+    for (const [stack, names] of techStack) {
+      for (const name of names) {
+        lines.push(`- \`${name}\``)
+      }
+    }
+    lines.push("")
   }
-  lines.push("- 及其他相关 skill（在此清单外但 available_skills 中存在的，按需加载）")
+  lines.push("（其他 available_skills 中未列举的相关 skill，按需加载）")
   lines.push("")
 
   // Collect boundary_hints from matched skills

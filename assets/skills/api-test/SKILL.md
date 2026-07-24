@@ -62,6 +62,14 @@ Authorization: Bearer {{TOKEN}}
 %}
 ```
 
+## 存量迁移
+
+若 `api-tests/script/` 目录已存在 shell（`.sh`）+ curl + jq 旧版脚本，逐文件转为 `.http` 格式：
+- 每个 `curl` 命令及其 headers 和 body 转为一条 `###` 分隔的请求
+- 状态码和字段校验的 shell 断言（`jq` + `if`）转为 `client.test()` + `client.assert()`
+- Shell 变量（如 `BASE`, `TOKEN`）转为 `{{ }}` 环境变量，来源写入 `api-tests/http-client.env.json`
+- 迁移后删除 `.sh` 文件，不留残余
+
 ## SQL 前置数据脚本
 
 SQL 脚本按场景准备无法通过接口构造的数据库数据（历史数据状态、多表联动前置条件）。要求幂等：

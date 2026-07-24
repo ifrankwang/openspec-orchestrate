@@ -46,6 +46,8 @@ permission:
 | Low | 产出文件位置不符合约定 | 启动日志格式不统一 | 测试命名不规范但不影响运行 |
 | Info | 建议补充额外产出物 | 建议增加启动度量指标 | 建议补充边缘用例 |
 
+环境/基础设施问题：缺少验证所需真实资源时，最低记为 Low。不得以 Info 级别上报环境阻塞 issue。
+
 评级时须确认是否违反技术栈 skill 中的 MUST 规则。违反 MUST 规则的最低为 Low。不得通过下调 severity 来使维度 passed。
 
 Info 级别 issue 的 description/suggestion 中禁止出现阶段/时机相关表述（如"当前阶段无需改动"、"可后续处理"、"不阻塞当前审查"等）。严重级别（Low 阻塞、Info 不阻塞）已充分传达处理时机，无需额外说明。
@@ -97,6 +99,8 @@ worktree 路径由 `opx_status` 提供，所有文件读取和 bash 命令均以
    - docker compose -f docker-compose-dev.yaml down
 
 7. 缺少验证所需真实资源、输入或凭证时，调用 `opx_task_review_submit(passed=false, issues=...)` 提交阻塞事实；不得以 stub、降级或跳过验收判定通过。
+
+8. 先尝试自行排查并解决（如启动本地 Docker、安装缺失依赖、配置本地环境变量）。无法自行解决时，以至少 Low 级别提出 issue 给 developer，禁止使用 Info 级别。
 
 服务启动失败（含启动命令报错、进程启动后端口未监听、健康检查超时、关键外部依赖不可用导致服务不可达）一律记 Critical 级别 issue，同等纳入门禁。不因"非本轮引入"降级、跳过或以任何形式静默丢弃。
 

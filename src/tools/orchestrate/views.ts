@@ -487,27 +487,32 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
   }
   renderOptionalSection(lines, "Blocker (待架构复核)", archBlockerLines)
   
+  const { tagMap } = scanSkills()
   lines.push("## 操作指引", "")
   lines.push("")
-  lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
-  lines.push("1. 读取上方「推荐阅读文档」中所有文件原文")
-  lines.push("2. 交叉比对：")
+  let stepNum = 0
+  lines.push(`${stepNum++}. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）`)
+  if ((tagMap.get("efficiency") || []).length > 0) {
+    lines.push(`${stepNum++}. 按已加载的效率 skill 中的工具可用性检测步骤确认代码探索工具就绪（含索引初始化）`)
+  }
+  lines.push(`${stepNum++}. 读取上方「推荐阅读文档」中所有文件原文`)
+  lines.push(`${stepNum++}. 交叉比对：`)
   lines.push("   - spec ↔ tasks：当前组子任务是否有对应需求？")
   lines.push("   - spec ↔ design：设计方案是否覆盖 spec 需求？")
   lines.push("   - tasks ↔ design：每项 task 是否有技术方案支撑？完成标准是否一致？")
-  lines.push("3. 检查：")
+  lines.push(`${stepNum++}. 检查：`)
   lines.push("   - 前置依赖是否就绪？")
   lines.push("   - 实施所需信息是否齐备？（模板路径/字段映射/外部依赖决策等）")
   lines.push("   - 接口/模型是否与 design 冲突？")
   lines.push("   - 任务排列是否合理？（基础架构类任务应在更早完成）")
-  lines.push("  4. 可本地修复的问题（仅限 md 文件）→ edit；信息缺口 → opx_arch_blocker")
-  lines.push("5. 识别任务中是否已存在通用做法（识别方式见项目 AGENTS.md/CLAUDE.md）：有则注明 dev 须遵循现有做法（任务明确要求换做法除外）；无但判断应做成通用做法的，在 notes 注明拓展性要求")
+  lines.push(`${stepNum++}. 可本地修复的问题（仅限 md 文件）→ edit；信息缺口 → opx_arch_blocker`)
+  lines.push(`${stepNum++}. 识别任务中是否已存在通用做法（识别方式见项目 AGENTS.md/CLAUDE.md）：有则注明 dev 须遵循现有做法（任务明确要求换做法除外）；无但判断应做成通用做法的，在 notes 注明拓展性要求`)
   if (state.unattended) {
-    lines.push("  6. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理；缺用户答复时自行推断决策后标记 resolved（无人值守模式）")
+    lines.push(`${stepNum++}. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理；缺用户答复时自行推断决策后标记 resolved（无人值守模式）`)
   } else {
-    lines.push("  6. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理（user_response+blocker_id），缺用户答复用 question 工具收集")
+    lines.push(`${stepNum++}. 复核上方「Blocker (待架构复核)」中 awaiting_user 项——有用户答复用 opx_arch_blocker 处理（user_response+blocker_id），缺用户答复用 question 工具收集`)
   }
-  lines.push("7. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")")
+  lines.push(`${stepNum++}. 确定 execution_boundary（含测试代码目录）→ opx_arch_submit(outcome=\"ready\")`)
   return lines.join("\n")
 }
 
@@ -571,16 +576,20 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   const { tagMap } = scanSkills()
   lines.push("## 操作指引", "")
   lines.push("")
-  lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
-  lines.push("1. 按「Task (待完成)」逐项实施（仅限上方「执行边界」内）")
-  lines.push("2. 按 issue 中 suggestion 修复「Issue (待修复 · Low 及以上，必办)」；Info 建议修复")
-  lines.push("3. 不可修 issue → opx_dev_submit(request_exempts=[...])")
+  let stepNum = 0
+  lines.push(`${stepNum++}. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）`)
+  if ((tagMap.get("efficiency") || []).length > 0) {
+    lines.push(`${stepNum++}. 按已加载的效率 skill 中的工具可用性检测步骤确认代码探索工具就绪（含索引初始化）`)
+  }
+  lines.push(`${stepNum++}. 按「Task (待完成)」逐项实施（仅限上方「执行边界」内）`)
+  lines.push(`${stepNum++}. 按 issue 中 suggestion 修复「Issue (待修复 · Low 及以上，必办)」；Info 建议修复`)
+  lines.push(`${stepNum++}. 不可修 issue → opx_dev_submit(request_exempts=[...])`)
   const apiTestSkills = tagMap.get("api-testing") || []
   if (apiTestSkills.length > 0) {
-    lines.push(`4. API 测试：按 ${apiTestSkills[0]} skill 约定编写/更新 API HTTP 测试脚本并执行，确认全部通过`)
+    lines.push(`${stepNum++}. API 测试：按 ${apiTestSkills[0]} skill 约定编写/更新 API HTTP 测试脚本并执行，确认全部通过`)
   }
-  lines.push("5. 全部完成 → commit → opx_dev_submit(outcome=\"completed\")")
-  lines.push("6. 遇外部依赖/凭证/真实输入缺失无法继续 → opx_dev_submit(outcome=\"blocked\")")
+  lines.push(`${stepNum++}. 全部完成 → commit → opx_dev_submit(outcome=\"completed\")`)
+  lines.push(`${stepNum++}. 遇外部依赖/凭证/真实输入缺失无法继续 → opx_dev_submit(outcome=\"blocked\")`)
   return lines.join("\n")
 }
 
@@ -592,18 +601,24 @@ export function renderToolReviewView(state: OrchestrateState, tg: TaskGroupState
   renderOptionalSection(lines, "上轮变更文件", tg.lastFilesChanged.map(f => `- \`${f}\``))
   const toolIssues = renderLayerIssues(tg.issues, "tool")
   renderOptionalSection(lines, "全部 Issue（tool 层可见）", toolIssues)
+  const { tagMap } = scanSkills()
   lines.push("## 操作指引", "")
   lines.push("")
-  lines.push("1. 加载质量门 skill，获取工具清单、执行命令与 issue 映射表")
-  lines.push("2. 按质量门 skill 定义顺序逐项执行工具检查（环境检查 → 编译 → 格式 → 架构约束 → 静态分析 → 测试编译与覆盖率 → 深度扫描 → 工具配置检查）")
-  if (state.unattended) {
-    lines.push("3. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈时记 skipped 并说明理由（无人值守模式）")
-  } else {
-    lines.push("3. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈用 question 提请用户裁定")
+  let stepNum = 0
+  lines.push(`${stepNum++}. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）`)
+  if ((tagMap.get("efficiency") || []).length > 0) {
+    lines.push(`${stepNum++}. 按已加载的效率 skill 中的工具可用性检测步骤确认代码探索工具就绪（含索引初始化）`)
   }
-  lines.push("4. 按质量门 skill 映射表将工具输出翻译为统一 issue")
-  lines.push("5. 核验「待确认」存量 issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入（工具自动回退为 rejected）")
-  lines.push("6. 汇总 → opx_tool_review_submit")
+  lines.push(`${stepNum++}. 加载质量门 skill，获取工具清单、执行命令与 issue 映射表`)
+  lines.push(`${stepNum++}. 按质量门 skill 定义顺序逐项执行工具检查（环境检查 → 编译 → 格式 → 架构约束 → 静态分析 → 测试编译与覆盖率 → 深度扫描 → 工具配置检查）`)
+  if (state.unattended) {
+    lines.push(`${stepNum++}. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈时记 skipped 并说明理由（无人值守模式）`)
+  } else {
+    lines.push(`${stepNum++}. 每项检查先按质量门 skill 自愈步骤恢复，不可自愈用 question 提请用户裁定`)
+  }
+  lines.push(`${stepNum++}. 按质量门 skill 映射表将工具输出翻译为统一 issue`)
+  lines.push(`${stepNum++}. 核验「待确认」存量 issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入（工具自动回退为 rejected）`)
+  lines.push(`${stepNum++}. 汇总 → opx_tool_review_submit`)
   return lines.join("\n")
 }
 
@@ -632,11 +647,15 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   }))
   const taskIssues = renderLayerIssues(tg.issues, "task")
   renderOptionalSection(lines, "审查 Issue", taskIssues)
+  const { tagMap } = scanSkills()
   lines.push("## 操作指引", "")
   lines.push("")
   lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
-  const hasGuidance = !!tg.executionBoundary?.notes
   let stepNum = 1
+  if ((tagMap.get("efficiency") || []).length > 0) {
+    lines.push(`${stepNum++}. 按已加载的效率 skill 中的工具可用性检测步骤确认代码探索工具就绪（含索引初始化）`)
+  }
+  const hasGuidance = !!tg.executionBoundary?.notes
   if (hasGuidance) {
     lines.push(`${stepNum++}. 校验实施内容是否遵循上方「实施指引」中的指引；发现违背时报 issue`)
   }
@@ -677,20 +696,25 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   )
   const qualityIssues = renderLayerIssues(tg.issues, "quality", dimension)
   renderOptionalSection(lines, "本维度 Issue", qualityIssues)
+  const { tagMap } = scanSkills()
   lines.push("## 操作指引", "")
   lines.push("")
-  lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
-  lines.push("1. 逐文件审查「上轮变更文件」，按本维度审查标准发现问题")
-  lines.push("2. 核验「本维度 Issue (待确认)」中每条是否真已修复 → fixed_issue_ids（未达标的不列入）")
-  lines.push("3. 裁定「本维度 Issue (豁免裁定中)」→ exempt_issue_ids / rejected_issue_ids")
+  let stepNum = 0
+  lines.push(`${stepNum++}. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）`)
+  if ((tagMap.get("efficiency") || []).length > 0) {
+    lines.push(`${stepNum++}. 按已加载的效率 skill 中的工具可用性检测步骤确认代码探索工具就绪（含索引初始化）`)
+  }
+  lines.push(`${stepNum++}. 逐文件审查「上轮变更文件」，按本维度审查标准发现问题`)
+  lines.push(`${stepNum++}. 核验「本维度 Issue (待确认)」中每条是否真已修复 → fixed_issue_ids（未达标的不列入）`)
+  lines.push(`${stepNum++}. 裁定「本维度 Issue (豁免裁定中)」→ exempt_issue_ids / rejected_issue_ids`)
   if (tiSkills.length > 0) {
-    lines.push("4. 新发现的本维度问题：")
+    lines.push(`${stepNum++}. 新发现的本维度问题：`)
     lines.push("   - 优先判断此问题是否可通过工具配置统一解决")
     lines.push(`   - 是 → 报业务 issue + 同时报工具改进 issue（suggestion 末尾标 [tool_eligible]），规则草案参考已加载的 \`${tiSkills[0]}\``)
     lines.push("   - 否 → 报常规 issue（severity 不可下调来使维度 passed）")
   } else {
-    lines.push("4. 新发现的本维度问题 → 报 issue（severity 不可下调来使维度 passed）")
+    lines.push(`${stepNum++}. 新发现的本维度问题 → 报 issue（severity 不可下调来使维度 passed）`)
   }
-  lines.push("5. 完成 → opx_quality_review_submit")
+  lines.push(`${stepNum++}. 完成 → opx_quality_review_submit`)
   return lines.join("\n")
 }

@@ -60,7 +60,7 @@ capabilities: ["efficiency"]
 
 ### CodeGraph（MCP 优先）
 
-`codegraph_explore` 已作为 MCP 工具注册。传 `projectPath` 参数指定项目绝对路径。
+`codegraph_explore` 已作为 MCP 工具注册。传 `projectPath` 参数指定项目绝对路径。使用前需确保目标项目已 `codegraph init`（worktree 环境每个 worktree 单独 init）。
 
 MCP 不可用时用 CLI 回退：
 
@@ -73,6 +73,8 @@ codegraph files -p .
 ```
 
 **首次使用需初始化**：`codegraph init <project_path>`。如提示 index 不存在，必须先 init。
+
+**worktree 环境**：git worktree 不继承主仓库的 `.codegraph` 索引。每个 linked worktree 需单独执行 `codegraph init`。
 
 ### Semble
 

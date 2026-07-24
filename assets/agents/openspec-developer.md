@@ -18,15 +18,9 @@ permission:
 
 ## 技能加载
 
-执行任务前，根据项目技术栈和你的执行目标，自行判断并加载合适的 skill：
-
-0. **必须加载**：在 available_skills 中查找 Capability 含 efficiency 的 skill，非必需降级读码。
-1. **识别技术栈**：检查项目根目录的构建配置文件（pom.xml / build.gradle / package.json / go.mod / Cargo.toml 等）
-2. **查找匹配 skill**：列出 `.agents/skills/` 目录中的可用 skill，选择匹配项；也可使用全局 skill（`~/.agents/skills/`）
-3. **加载 skill**：通过 Skill tool 加载，遵循其中的编码规范、架构规则、构建命令、框架特定用法等
-4. **按需/按能力加载**：根据 task 执行目标，查找 Capability 含 api-testing、api-design、architecture、db-design、security 的 skill，按需加载。
-5. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在提交报告中标注"未加载技术栈 skill"
-6. 若已加载的 skill 在 frontmatter 中声明了 `boundary_hints`（`directories`/`packages`），这些路径即使在执行边界外也可正常创建文件——执行边界为实施范围约束，不阻挡 skill 约定路径。提交时在 `opx_dev_submit` 的 `self_check_results` 中备注 skill 声明路径与执行边界的差异。
+1. 按 `opx_status` 中「Skill 加载建议」查找 Capability 对应的 skill，用 Skill tool 加载
+2. 根据项目技术栈（构建配置文件）加载技术栈 skill，未找到时降级并在报告中标注
+3. 若加载的 skill 声明了 `boundary_hints`（`directories`/`packages`），相关路径不受执行边界限制
 
 ## 文档阅读关注点
 

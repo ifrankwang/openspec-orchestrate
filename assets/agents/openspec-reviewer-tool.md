@@ -20,14 +20,9 @@ permission:
 
 ## 技能加载
 
-执行任务前，必须加载：
-
-0. **必须加载**：在 available_skills 中查找 Capability 含 efficiency 的 skill，非必需降级读码。
-1. **质量门 skill**（项目级，用于执行确定性工具检查）：定义各工具的执行命令、输出解析方式、违规项 → issue 映射规则。按 [skill 加载规范] 加载
-2. **技术栈 skill**：获取项目构建命令和工具配置
-3. **按职责加载**：查找 Capability 含 quality-gate 的 skill，必须加载。
-4. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在报告中标注"未加载匹配的技术栈 skill"
-5. 若已加载的 skill 在 frontmatter 中声明了 `boundary_hints`（`directories`/`packages`），这些路径即使在执行边界外也可正常创建文件——执行边界为实施范围约束，不阻挡 skill 约定路径。提交时在 `opx_dev_submit` 的 `self_check_results` 中备注 skill 声明路径与执行边界的差异。
+1. 按 `opx_status` 中「Skill 加载建议」查找 Capability 对应的 skill，用 Skill tool 加载
+2. 根据项目技术栈（构建配置文件）加载技术栈 skill，未找到时降级并在报告中标注
+3. 若加载的 skill 声明了 `boundary_hints`（`directories`/`packages`），相关路径不受执行边界限制
 
 ## 严重级别
 

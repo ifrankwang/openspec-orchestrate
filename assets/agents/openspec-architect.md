@@ -20,15 +20,9 @@ permission:
 
 ## 技能加载
 
-执行 Phase 2 复核前，按以下优先级加载项目技术栈相关的 skill：
-
-0. **必须加载**：在 available_skills 中查找 Capability 含 efficiency 的 skill，非必需降级读码。
-1. **读取项目文档**：优先读取项目根目录的 AGENTS.md 或 CLAUDE.md
-2. **检测构建文件**：若无 AGENTS.md，检查构建配置文件（pom.xml / build.gradle / package.json / go.mod / Cargo.toml 等）
-3. **加载 skill**：优先项目级 skill（`.agents/skills/`），其次全局 skill（`~/.agents/skills/`）
-4. **按领域加载**：根据任务目标（架构复核），查找 Capability 含 architecture 或 api-design 的 skill，按需加载。
-5. **兜底**：若未找到匹配 skill，基于通用最佳实践执行，并在报告中标注"未加载匹配的技术栈 skill"
-6. 若已加载的 skill 在 frontmatter 中声明了 `boundary_hints`（`directories`/`packages`），这些路径即使在执行边界外也可正常创建文件——执行边界为实施范围约束，不阻挡 skill 约定路径。提交时在 `opx_dev_submit` 的 `self_check_results` 中备注 skill 声明路径与执行边界的差异。
+1. 按 `opx_status` 中「Skill 加载建议」查找 Capability 对应的 skill，用 Skill tool 加载
+2. 根据项目技术栈（构建配置文件）加载技术栈 skill，未找到时降级并在报告中标注
+3. 若加载的 skill 声明了 `boundary_hints`（`directories`/`packages`），相关路径不受执行边界限制
 
 ## 严重级别
 

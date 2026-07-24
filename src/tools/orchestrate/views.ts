@@ -482,6 +482,7 @@ export function renderArchitectView(state: OrchestrateState, tg: TaskGroupState)
   
   lines.push("## 操作指引", "")
   lines.push("")
+  lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
   lines.push("1. 读取上方「推荐阅读文档」中所有文件原文")
   lines.push("2. 交叉比对：")
   lines.push("   - spec ↔ tasks：当前组子任务是否有对应需求？")
@@ -562,6 +563,7 @@ export function renderDeveloperView(state: OrchestrateState, tg: TaskGroupState)
   renderOptionalSection(lines, "Issue (豁免裁定中)", sortIssuesByCategory(exemptionIssues).map(renderIssueItem))
   lines.push("## 操作指引", "")
   lines.push("")
+  lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
   lines.push("1. 按「Task (待完成)」逐项实施（仅限上方「执行边界」内）")
   lines.push("2. 按 issue 中 suggestion 修复「Issue (待修复 · Low 及以上，必办)」；Info 建议修复")
   lines.push("3. 不可修 issue → opx_dev_submit(request_exempts=[...])")
@@ -621,6 +623,7 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
   renderOptionalSection(lines, "审查 Issue", taskIssues)
   lines.push("## 操作指引", "")
   lines.push("")
+  lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
   const hasGuidance = !!tg.executionBoundary?.notes
   let stepNum = 1
   if (hasGuidance) {
@@ -663,6 +666,7 @@ export function renderQualityReviewView(state: OrchestrateState, tg: TaskGroupSt
   renderOptionalSection(lines, "本维度 Issue", qualityIssues)
   lines.push("## 操作指引", "")
   lines.push("")
+  lines.push("0. 按上方「Skill 加载清单」逐项加载列出的 skill（不可跳步）")
   lines.push("1. 逐文件审查「上轮变更文件」，按本维度审查标准发现问题")
   lines.push("2. 核验「本维度 Issue (待确认)」中每条是否真已修复 → fixed_issue_ids（未达标的不列入）")
   lines.push("3. 裁定「本维度 Issue (豁免裁定中)」→ exempt_issue_ids / rejected_issue_ids")

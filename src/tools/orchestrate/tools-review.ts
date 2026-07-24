@@ -467,6 +467,14 @@ export const task_review_submit = tool({
     if (tg.phases.review.task.completed && !allTasksVerified(tg.tasks)) {
       throw new Error("task 层审核报告已提交，不允许重复提交。")
     }
+    // Auto-commit API test collateral if worktree is dirty
+    if (tg.worktreePath) {
+      const clean = await isWorktreeClean(tg.worktreePath)
+      if (!clean) {
+        await runGit(tg.worktreePath, ["add", "-A", "--", "api-tests/"])
+        await runGit(tg.worktreePath, ["commit", "-m", "test(api): update API test scripts"])
+      }
+    }
 
     const verified = args.verified_task_ids || []
     const failed = args.failed_task_ids || []

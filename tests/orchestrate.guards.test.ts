@@ -419,6 +419,80 @@ describe("G6. task_review_submit 完整性门禁", () => {
 
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   })
+
+  test("worktree dirty → auto-commit before submit", async () => {
+    const root = `/tmp/guard-g6-dirty-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ outcome: "ready",
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    fakeGit.diffs.set(wt, ["src/T.java"])
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
+
+    // Transition to review + tool pass
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, o)
+    await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    // Mark worktree dirty
+    fakeGit.dirtyPaths.add(tg.worktreePath)
+
+    const result = await task_review_submit.execute({ passed: true,
+      verified_task_ids: ["1", "2"], failed_task_ids: [],
+      fixed_issue_ids: []}, taskR)
+    expect(result).toBeDefined()
+    expect(fakeGit.callLog).toContain("add -A -- api-tests/")
+    expect(fakeGit.callLog).toContain("commit -m test(api): update API test scripts")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+
+  test("worktree clean → no auto-commit, normal submit", async () => {
+    const root = `/tmp/guard-g6-clean-${Date.now()}`
+    const wt = setupWt(root, join(root, "w"))
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const o = makeCtx("openspec-orchestrator", wt), a = makeCtx("openspec-architect", wt),
+         d = makeCtx("openspec-developer", wt),
+         toolR = makeCtx("openspec-reviewer-tool", wt),
+         taskR = makeCtx("openspec-reviewer-task", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, o)
+    await arch_submit.execute({ outcome: "ready",
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }}, a)
+    await set_worktree.execute({}, o)
+    fakeGit.diffs.set(wt, ["src/T.java"])
+    await dev_submit.execute({ completed_task_ids: ["1", "2"] }, d)
+
+    // Transition to review + tool pass
+    const state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, o)
+    await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+
+    // Worktree is clean — no dirtyPaths set
+    const result = await task_review_submit.execute({ passed: true,
+      verified_task_ids: ["1", "2"], failed_task_ids: [],
+      fixed_issue_ids: []}, taskR)
+    expect(result).toBeDefined()
+    expect(fakeGit.callLog).not.toContain("add -A -- api-tests/")
+    expect(fakeGit.callLog).not.toContain("commit -m test(api): update API test scripts")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
 })
 
 // ── G7: 非法 task id in failed_task_ids ──

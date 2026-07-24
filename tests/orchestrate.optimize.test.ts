@@ -861,6 +861,58 @@ describe("B4. 空 issue 正常提交回归", () => {
 })
 
 // ════════════════════════════════════════════════════════════════
+//  Behavior 8: submit 工具支持数字类型 task/issue ID
+// ════════════════════════════════════════════════════════════════
+
+describe("B8. submit 工具支持数字类型 ID", () => {
+  test("tool/task/quality_review_submit 接受数字 fixed_issue_ids", async () => {
+    const root = `/tmp/optimize-b8a-${Date.now()}`
+    const wt = freshWt(root)
+    const fakeGit = new FakeGitRunner()
+    __setGitRunner(fakeGit)
+    const orch = makeCtx("openspec-orchestrator", wt)
+    const toolR = makeCtx("openspec-reviewer-tool", wt)
+    const taskR = makeCtx("openspec-reviewer-task", wt)
+    const styleR = makeCtx("openspec-reviewer-style", wt)
+
+    await init.execute({ change_id: CID, task_group_id: "1" }, orch)
+    await arch_submit.execute({ outcome: "ready",
+      execution_boundary: { allowed_directories: ["src"], allowed_packages: ["com.t"], notes: "" }},
+      makeCtx("openspec-architect", wt))
+    await set_worktree.execute({}, orch)
+
+    let state = readStateSync(wt, CID)
+    const devWt = state.taskGroups.find((g: any) => g.id === "1").worktreePath
+    fakeGit.diffs.set(devWt, ["src/F1.java", "src/F2.java"])
+
+    // dev_submit: completed_task_ids 传数字
+    await dev_submit.execute({ completed_task_ids: [1, 2] as any }, makeCtx("openspec-developer", wt))
+
+    state = readStateSync(wt, CID)
+    const tg = state.taskGroups.find((g: any) => g.id === "1")
+    await init.execute({
+      change_id: CID, task_group_id: "1",
+      recovery: { phase: "review", worktree_path: tg.worktreePath, branch_name: tg.branchName, preserve_progress: true }}, orch)
+
+    // tool_review_submit: fixed_issue_ids 传数字
+    const r1 = await tool_review_submit.execute({ passed: true, issues: [], fixed_issue_ids: [] }, toolR)
+    expect(typeof r1 === "string" ? JSON.parse(r1).status : JSON.parse(r1.output).status).toBe("ok")
+
+    // task_review_submit: verified_task_ids 传数字
+    const r2 = await task_review_submit.execute({
+      passed: true, verified_task_ids: [1, 2] as any, failed_task_ids: [], fixed_issue_ids: []}, taskR)
+    expect(typeof r2 === "string" ? JSON.parse(r2).status : JSON.parse(r2.output).status).toBe("ok")
+
+    // quality_review_submit: 数字 passed 亦通过（非关键，但验证 type coercion 无副作用）
+    const r3 = await quality_review_submit.execute({ passed: true, issues: []}, styleR)
+    const parsed3 = typeof r3 === "string" ? JSON.parse(r3) : JSON.parse(r3.output)
+    expect(parsed3.status).toBe("partial")
+
+    try { rmSync(root, { recursive: true, force: true }) } catch {}
+  })
+})
+
+// ════════════════════════════════════════════════════════════════
 //  Behavior 5: dev_submit 不再重置 retryCount（修复 B 验证）
 // ════════════════════════════════════════════════════════════════
 

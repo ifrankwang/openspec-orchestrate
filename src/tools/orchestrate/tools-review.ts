@@ -17,6 +17,10 @@ import { readStateByWorktree, writeState } from "./state.js"
 import { runGit, runGitChecked, getCurrentBranch, getMergeBase, getDiffFileList, isWorktreeClean, markTaskGroupCheckboxesComplete } from "./git.js"
 import { parseTasksMdForGroup, extractRelevantSpecsFromTasks } from "./tasks-md.js"
 
+function idsToStrings(ids: string[] | undefined): string[] {
+  return (ids || []).map(String)
+}
+
 function addBlockers(tg: TaskGroupState, blockers: Array<Omit<BlockerItem, "id" | "status" | "userResponse" | "architectConclusion">>, status: BlockerItem["status"]): void {
   let nextId = tg.blockers.reduce((max, blocker) => Math.max(max, Number(blocker.id.replace(/^b/, "")) || 0), 0) + 1
   for (const blocker of blockers) {
@@ -186,6 +190,9 @@ export const dev_submit = tool({
   },
   async execute(args, context) {
     assertAgent(context, "opx_dev_submit", ["openspec-developer"])
+    if (args.completed_task_ids) args.completed_task_ids = args.completed_task_ids.map(String)
+    if (args.fixed_issue_ids) args.fixed_issue_ids = idsToStrings(args.fixed_issue_ids)
+    if (args.request_exempts) args.request_exempts = args.request_exempts.map(r => ({ ...r, issue_id: String(r.issue_id) }))
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
     const tg = findTaskGroup(state, state.taskGroupId)
@@ -341,6 +348,9 @@ export const tool_review_submit = tool({
   },
   async execute(args, context) {
     assertAgent(context, "opx_tool_review_submit", ["openspec-reviewer-tool"])
+    const tlFixedIds = idsToStrings(args.fixed_issue_ids)
+    const tlExemptIds = idsToStrings(args.exempt_issue_ids)
+    const tlRejected = (args.rejected_issue_ids || []).map(r => ({ ...r, issue_id: String(r.issue_id) }))
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
     const tg = findTaskGroup(state, state.taskGroupId)
@@ -362,7 +372,7 @@ export const tool_review_submit = tool({
       }
     }
 
-    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], undefined, "tool")
+    applyReviewGate(tg.issues, tlFixedIds, tlExemptIds, tlRejected, undefined, "tool")
 
     let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
     const newIssues: IssueItem[] = []
@@ -455,6 +465,11 @@ export const task_review_submit = tool({
   },
   async execute(args, context) {
     assertAgent(context, "opx_task_review_submit", ["openspec-reviewer-task"])
+    if (args.verified_task_ids) args.verified_task_ids = args.verified_task_ids.map(String)
+    if (args.failed_task_ids) args.failed_task_ids = args.failed_task_ids.map(f => ({ ...f, task_id: String(f.task_id) }))
+    const tkFixedIds = idsToStrings(args.fixed_issue_ids)
+    const tkExemptIds = idsToStrings(args.exempt_issue_ids)
+    const tkRejected = (args.rejected_issue_ids || []).map(r => ({ ...r, issue_id: String(r.issue_id) }))
     const state = await readStateByWorktree(context.worktree)
     if (!state) throw new Error("编排会话未初始化。请先调用 opx_orch_init。")
     const tg = findTaskGroup(state, state.taskGroupId)
@@ -530,7 +545,7 @@ export const task_review_submit = tool({
 
     assertPassWithIssues(args.passed, args.issues || [], "opx_task_review_submit")
 
-    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], undefined, "task")
+    applyReviewGate(tg.issues, tkFixedIds, tkExemptIds, tkRejected, undefined, "task")
 
     if (tg.executionBoundary) {
       if (taskNewIssues.length > 0) {
@@ -649,6 +664,10 @@ export const quality_review_submit = tool({
       throw new Error(`维度 "${dimension}" 的审查报告已提交，不允许重复提交。`)
     }
 
+    const qlFixedIds = idsToStrings(args.fixed_issue_ids)
+    const qlExemptIds = idsToStrings(args.exempt_issue_ids)
+    const qlRejected = (args.rejected_issue_ids || []).map(r => ({ ...r, issue_id: String(r.issue_id) }))
+
     const passed = args.passed === true || (args.passed as any) === "true"
     const issues = (args.issues || []) as any[]
     assertPassWithIssues(passed, issues, "opx_quality_review_submit")
@@ -659,7 +678,7 @@ export const quality_review_submit = tool({
       }
     }
 
-    applyReviewGate(tg.issues, args.fixed_issue_ids || [], args.exempt_issue_ids || [], args.rejected_issue_ids || [], dimension, "quality")
+    applyReviewGate(tg.issues, qlFixedIds, qlExemptIds, qlRejected, dimension, "quality")
 
     let nextIssueId = tg.issues.reduce((m, i) => Math.max(m, parseInt(i.id, 10) || 0), 0) + 1
     const newIssues: IssueItem[] = []

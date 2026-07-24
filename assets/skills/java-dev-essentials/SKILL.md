@@ -1,6 +1,7 @@
 ---
 name: java-dev-essentials
-description: 仅限 Java 后端开发场景。项目开发基础——构建命令、代码质量、测试、日志、提交规范。适用场景：Phase 2 编写代码（backend-developer）、Phase 2 测试审查（test-engineer）、Phase 3 任务验证（task-verifier）、Phase 3 规范审查（code-reviewer-style）。Capability: efficiency, tech-stack-java.
+description: 仅限 Java 后端开发场景。项目开发基础——构建命令、代码质量、测试、日志、提交规范。适用场景：Phase 2 编写代码（backend-developer）、Phase 2 测试审查（test-engineer）、Phase 3 任务验证（task-verifier）、Phase 3 规范审查（code-reviewer-style）。
+capabilities: ["efficiency", "tech-stack-java"]
 ---
 
 > **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。

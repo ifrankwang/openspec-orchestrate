@@ -1,6 +1,7 @@
 ---
 name: java-quality-gate
-description: 仅限 Java 后端开发场景。Java 项目质量门工具集——Maven/Spotless/PMD/ArchUnit/JaCoCo/SonarQube。通用质量门流程见 quality-gate。Capability: quality-gate, tech-stack-java.
+description: 仅限 Java 后端开发场景。Java 项目质量门工具集——Maven/Spotless/PMD/ArchUnit/JaCoCo/SonarQube。通用质量门流程见 quality-gate。
+capabilities: ["quality-gate", "tech-stack-java"]
 ---
 
 > **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。

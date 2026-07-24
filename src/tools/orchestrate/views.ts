@@ -2,6 +2,9 @@ import type { TaskGroupState, OrchestrateState, TaskItem, IssueItem, ReviewDimen
 import { REVIEW_DIMENSIONS } from "./types.js"
 import { SEVERITY_LEVELS, DIMENSION_AGENT_MAP, MAX_RETRIES } from "./constants.js"
 import { deriveStatus, isReviewCompleted, allTasksVerified, deriveCurrentAgents, isBlockingIssue, isStatusUnresolved } from "./derive.js"
+import { readdirSync, readFileSync, existsSync } from "node:fs"
+import { resolve, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 
 /**
  * 各 agent 能力标签建议映射。
@@ -47,15 +50,82 @@ const AGENT_CAPABILITY_SUGGESTIONS: Record<string, [string[], string[]]> = {
   ],
 }
 
+const __skillsDir = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..", "..", "..",
+  "assets", "skills"
+)
+
+function scanCapabilities(): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  if (!existsSync(__skillsDir)) return map
+  for (const entry of readdirSync(__skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const mdPath = resolve(__skillsDir, entry.name, "SKILL.md")
+    if (!existsSync(mdPath)) continue
+    try {
+      const raw = readFileSync(mdPath, "utf-8")
+      const m = raw.match(/capabilities:\s*\[([^\]]*)\]/)
+      if (!m) continue
+      for (const tag of m[1].split(",").map(s => s.trim().replace(/["']/g, "")).filter(Boolean)) {
+        const arr = map.get(tag) || []
+        arr.push(entry.name)
+        map.set(tag, arr)
+      }
+    } catch { /* skip unreadable */ }
+  }
+  return map
+}
+
 function renderSkillSuggestions(agent: string): string[] {
   const pair = AGENT_CAPABILITY_SUGGESTIONS[agent]
   if (!pair) return []
   const [must, onDemand] = pair
+  const skillMap = scanCapabilities()
+
   const lines: string[] = []
-  lines.push("## Skill 加载建议（按 Capability 搜索，禁止按 skill 名硬编码）", "")
-  lines.push("在 available_skills 中按 description 中 `Capability:` 标签搜索，找到 skill 名后用 Skill tool 加载。未找到时降级继续。", "")
-  if (must.length > 0) lines.push(`- **必加载**: \`${must.join("`, `")}\``)
-  if (onDemand.length > 0) lines.push(`- **按需**: \`${onDemand.join("`, `")}\``)
+  lines.push("## Skill 加载清单", "")
+  lines.push("用 Skill tool 逐个加载以下 skill，未找到时跳过：", "")
+
+  const rendered = new Set<string>()
+  function addGroup(label: string, caps: string[]) {
+    const names: string[] = []
+    for (const cap of caps) {
+      for (const n of skillMap.get(cap) || []) {
+        if (!rendered.has(n)) { rendered.add(n); names.push(n) }
+      }
+    }
+    if (names.length > 0) lines.push(`- **${label}**: ${names.map(n => `\`${n}\``).join(", ")}`)
+  }
+
+  addGroup("通用（必加载）", must)
+  addGroup("按场景", onDemand)
+
+  // Collect boundary_hints from matched skills
+  const allCaps = [...must, ...onDemand]
+  const hinted: string[] = []
+  for (const cap of allCaps) {
+    for (const name of skillMap.get(cap) || []) {
+      if (!rendered.has(name)) continue
+      const mdPath = resolve(__skillsDir, name, "SKILL.md")
+      try {
+        const raw = readFileSync(mdPath, "utf-8")
+        if (!raw.includes("boundary_hints:")) continue
+        const dm = raw.match(/directories:\s*\[([^\]]*)\]/)
+        if (dm) for (const d of dm[1].split(",").map(s => s.trim().replace(/["']/g, ""))) {
+          hinted.push(`- \`${name}\` → \`${d}\``)
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  if (hinted.length > 0) {
+    lines.push("")
+    lines.push("## 路径提示（skill 声明的 boundary_hints）", "")
+    lines.push("以下目录不受执行边界限制：", "")
+    lines.push(...hinted)
+  }
+
   lines.push("")
   return lines
 }

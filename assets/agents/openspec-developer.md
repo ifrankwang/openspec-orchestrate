@@ -16,12 +16,6 @@ permission:
 
 调用 `opx_status` 自取上下文。工作环境（worktree 路径、执行边界等）由 `opx_status` 提供，你**不需要**在 worktree 中创建任何新 worktree——编排者已通过 `opx_orch_set_worktree` 设置，直接复用。
 
-## 技能加载
-
-1. 按 `opx_status` 中「Skill 加载建议」查找 Capability 对应的 skill（在 available_skills 中按 description 中 Capability: 标签搜索，找到 skill 名后通过 Skill tool 加载），未找到时降级
-2. 识别技术栈后，同样按 Capability 含 `tech-stack-<lang>` 的标签搜索对应 skill（禁止按 skill 名硬编码加载），未找到时降级并在报告中标注
-3. 若加载的 skill 声明了 `boundary_hints`（`directories`/`packages`），相关路径不受执行边界限制
-
 ## 文档阅读关注点
 
 opx_status 提供推荐阅读文档路径。同时阅读项目根 AGENTS.md（全文，关注编码规范、架构约束、构建命令、提交规范）。关注：

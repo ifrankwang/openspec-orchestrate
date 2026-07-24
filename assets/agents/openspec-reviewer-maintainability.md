@@ -16,14 +16,11 @@ permission:
 
 调用 `opx_status` 自取上下文。
 
-## 技能加载
+## 工具改进
 
-1. 按 `opx_status` 中「Skill 加载建议」查找 Capability 对应的 skill（在 available_skills 中按 description 中 `Capability:` 标签搜索，找到 skill 名后通过 Skill tool 加载），未找到时降级
-2. 识别技术栈后，按 Capability 含 `tech-stack-<lang>` 的标签搜索对应 skill（禁止按 skill 名硬编码加载），未找到时降级并在报告中标注
-3. 若已加载工具规则改进类 skill，发现可工具化 pattern 时须报两条分离 issue：
-   业务 issue（`file`=违规现场）+ 工具改进 issue（`file`=规则/配置文件，`line=0` 若待新建，`suggestion` 含规则草案 + 验证命令，末尾标 `[tool_eligible]`）。
-   未加载时仅报业务 issue，跳过工具改进环节
-4. 若加载的 skill 声明了 `boundary_hints`（`directories`/`packages`），相关路径不受执行边界限制
+若已加载工具规则改进类 skill，发现可工具化 pattern 时须报两条分离 issue：
+业务 issue（`file`=违规现场）+ 工具改进 issue（`file`=规则/配置文件，`line=0` 若待新建，`suggestion` 含规则草案 + 验证命令，末尾标 `[tool_eligible]`）。
+未加载时仅报业务 issue，跳过工具改进环节
 
 ## 严重级别
 

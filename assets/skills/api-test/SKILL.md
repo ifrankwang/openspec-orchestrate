@@ -1,6 +1,7 @@
 ---
 name: api-test
-description: Web 应用 API 自动化测试——编写 HTTP 黑盒测试脚本与前置 SQL 数据脚本。技术栈无关，仅绑定 Web 应用。适用场景：Phase 2 开发阶段提交前 API 测试编写与执行（developer），以及 Phase 3 任务验证中独立执行并审查（reviewer-task）。Capability: api-testing.
+description: Web 应用 API 自动化测试——编写 HTTP 黑盒测试脚本与前置 SQL 数据脚本。技术栈无关，仅绑定 Web 应用。适用场景：Phase 2 开发阶段提交前 API 测试编写与执行（developer），以及 Phase 3 任务验证中独立执行并审查（reviewer-task）。
+capabilities: ["api-testing"]
 boundary_hints:
   directories: ["api-tests/"]
 ---

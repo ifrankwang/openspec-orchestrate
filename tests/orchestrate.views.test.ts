@@ -93,6 +93,8 @@ describe("视图「操作指引」段", () => {
     expect(output).toContain("## 操作指引")
     expect(output).toContain("opx_dev_submit")
     expect(output).toContain("Task (待完成)")
+    expect(output).toContain("Skill 加载清单")
+    expect(output).toContain("code-efficiency")
   })
 
   test("renderToolReviewView 含操作指引", () => {

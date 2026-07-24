@@ -1,6 +1,7 @@
 ---
 name: quality-gate
-description: 确定性质量门框架——定义检查流程、统一 issue 结构、环境准备与降级、首次运行存量处理。技术栈无关。适用场景：tool review 阶段加载，用于编排质量门检查。Capability: quality-gate.
+description: 确定性质量门框架——定义检查流程、统一 issue 结构、环境准备与降级、首次运行存量处理。技术栈无关。适用场景：tool review 阶段加载，用于编排质量门检查。
+capabilities: ["quality-gate"]
 ---
 
 > **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。

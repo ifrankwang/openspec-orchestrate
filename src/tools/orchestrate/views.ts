@@ -510,7 +510,7 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
     lines.push(`${stepNum++}. 校验实施内容是否遵循上方「实施指引」中的指引；发现违背时报 issue`)
   }
   lines.push(`${stepNum++}. Task 产出验证：逐条核验「Task (待验证)」中每个 task 的产出（文件是否存在、目录是否非空、配置项/依赖是否就绪），按技术栈 skill 中构建命令验证编译`)
-  lines.push(`${stepNum++}. 服务启动验证：启动基础设施 → 启动应用 → 健康检查轮询（60s）→ 识别新增/变更接口 → curl 场景化测试（正常+边界）→ 记录结果 → 停止服务`)
+  lines.push(`${stepNum++}. 服务启动验证：启动基础设施 → 启动应用 → 健康检查轮询（60s）→ 识别新增/变更接口 → API 场景化测试（.http）（正常+边界）→ 记录结果 → 停止服务`)
   lines.push(`${stepNum++}. 测试代码审查：断言放水、边界缺失、Mock 过度、覆盖不足`)
   lines.push(`${stepNum++}. 缺少验证所需真实资源/输入/凭证 → opx_task_review_submit(passed=false)，不得以 stub/降级/跳过判定通过`)
   lines.push(`${stepNum++}. 汇总 → opx_task_review_submit`)

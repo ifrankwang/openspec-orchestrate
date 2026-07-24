@@ -1,18 +1,10 @@
 ---
 name: java-quality-gate
-description: 仅限 Java 后端开发场景。Java 项目质量门工具集——Maven/Spotless/PMD/ArchUnit/JaCoCo/SonarQube。通用质量门流程见 quality-gate。
+description: 仅限 Java 后端开发场景。Java 项目质量门工具集——Maven/Spotless/PMD/ArchUnit/JaCoCo/SonarQube。通用质量门流程见 quality-gate。Capability: quality-gate, tech-stack-java.
 ---
 
 > **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。
 > 本 skill 是 quality-gate 的 Java 实现配套，仅含 Java 技术栈特有工具命令与输出解析。通用质量门流程见 quality-gate。调用本 skill 须同时加载 quality-gate。
-
-## 适用范围
-
-本 skill 仅供 **Tool review** 的 `openspec-reviewer-tool` 加载。工具 reviewer 执行本 skill 中的所有工具检查，并将结果通过 `opx_tool_review_submit` 提交。
-
-**不适用场景**：
-- Quality reviewer（architecture/maintainability/style/performance/security）不加载本 skill——他们自行按维度审查代码。
-- developer 不加载本 skill
 
 ## 通用步骤
 

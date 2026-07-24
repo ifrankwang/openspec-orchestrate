@@ -1,11 +1,16 @@
 ---
 name: java-ddd-architecture
-description: 仅限 Java 后端开发场景。DDD 四层架构规范——包结构、层间依赖、各层职责、DTO CQRS 命名、DI 模式、值对象、Port/Adapter。适用场景：Phase 3 架构审查（code-reviewer-architecture）、Phase 1 架构师复核（architect）、Phase 2 编写代码（backend-developer）。当新增 Controller/Service/Repository/PO、调整包结构、或审查层间依赖时使用。
+description: 仅限 Java 后端开发场景。DDD 四层架构 Java 实现——Java 代码实现规范、Spring DI、MapStruct、ArchUnit 规则。DDD 方法论见 ddd-architecture。适用场景同前。
 ---
+
+> **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。
+> 本 skill 是 ddd-architecture 的 Java 实现配套，仅含 Java/Spring 特有实现细节。DDD 方法论见 ddd-architecture。调用本 skill 须同时加载 ddd-architecture。
 
 ## 包结构
 
-```
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
+\`\`\`
 {basePackage}
 ├── domain
 │   ├── model        ← 聚合根、实体、值对象（纯 POJO，零框架依赖）
@@ -39,13 +44,17 @@ description: 仅限 Java 后端开发场景。DDD 四层架构规范——包结
 
 ## 层间依赖
 
-```
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
+\`\`\`
 interfaces → application → domain ← infrastructure
 ```
 
 箭头方向即依赖方向：interfaces 依赖 application，application 依赖 domain，infrastructure 依赖 domain（实现 domain 定义的 Port/Repository 接口）。infrastructure 不依赖 interfaces，interfaces 不直接依赖 infrastructure。
 
 ## 各层职责
+
+> 概念见 ddd-architecture，以下为 Java 实现示例。
 
 | 层 | 职责 | 禁止 |
 |----|------|------|
@@ -54,53 +63,9 @@ interfaces → application → domain ← infrastructure
 | domain | 核心领域逻辑、聚合根行为、领域服务 | 任何框架依赖（Spring/MyBatis/Spring AI） |
 | infrastructure | 技术实现：持久化、外部集成、消息队列、ACL 转换 | 业务规则判断 |
 
-## 通用语言（Ubiquitous Language）
-
-每个 Bounded Context 必须维护一份**术语表**，记录业务名词及其含义。开发、产品、业务方统一使用此表沟通，代码命名以此为基准。
-
-### 术语表位置
-
-```
-{basePackage}
-└── domain
-    └── language.md        ← 术语表，与代码同仓库
-```
-
-### 术语表格式
-
-```markdown
-# Order Management Bounded Context — 通用语言
-
-| 术语 | 英文名 | 含义 | 代码位置 |
-|------|--------|------|---------|
-| 订单 | Order | 客户提交的购买请求 | `domain/model/Order.java` |
-| 发票 | Invoice | 订单对应的结算凭证 | `domain/model/Invoice.java` |
-| 客户 | Customer | 发起订单的主体 | `domain/model/Customer.java` |
-| 订单状态 | OrderStatus | 订单当前处理阶段 | `domain/model/OrderStatus.java` |
-```
-
-### 命名规则
-
-- 代码类名、方法名、字段名必须与术语表一致，禁止翻译/缩写
-  - 正确：`orderService.createOrder(order)`
-  - 错误：`ordSvc.createOrd(ord)`
-- 值对象用 `record`，枚举用 `enum`，实体用 `class`——类型选择本身就是语言表达
-- 跨 Bounded Context 的同一术语含义必须一致；含义不同则用不同类名区分
-
-## DTO 命名约定（CQRS 风格）
-
-不引入 QO/VO/DTO 三分法，按包职责区分对象用途：
-
-| 包 | 用途 | 示例 |
-|----|------|------|
-| `interfaces/dto` | Controller 入参/出参 | `OrderResponse`、`OrderCreateRequest` |
-| `application/command` | 写操作命令 | `CreateOrderCommand` |
-| `application/query` | 读操作查询 | `OrderListQuery` |
-| `application/dto` | 应用层模块间传输 | `OrderSummaryDto` |
-
-枚举字段直接用 Java Enum 类型，禁止用 Integer/String 作编码载体再手动转换。
-
 ## CQRS 读写分离
+
+> 概念见 ddd-architecture，以下为 Java 实现示例。
 
 Command（写）和 Query（读）走不同路径，互不混淆：
 
@@ -140,6 +105,8 @@ public class OrderListQueryService {
 ```
 
 ## 充血模型
+
+> 概念见 ddd-architecture，以下为 Java 实现示例。
 
 Domain 实体必须是充血模型——行为封装在实体内部，禁止仅 getter/setter 的贫血模型。
 
@@ -183,6 +150,8 @@ public class Order {
 
 ## 聚合设计
 
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
 | 原则 | 说明 |
 |------|------|
 | 聚合边界 = 事务边界 | 一个事务只修改一个聚合，跨聚合用最终一致性 |
@@ -213,6 +182,8 @@ public class Order {
 
 ## Repository 领域语义
 
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
 Repository 对 domain 层暴露集合语义，不暴露持久化语义：
 
 ```java
@@ -237,6 +208,8 @@ public interface OrderRepository {
 - 纯查询投影（非 domain 实体）走 CQRS Query 路径，不经过 Repository
 
 ## Domain Event
+
+> 概念见 ddd-architecture，以下为 Java 实现示例。
 
 领域事件定义在 domain 层，事件处理在 infrastructure 层：
 
@@ -275,6 +248,8 @@ public class SpringEventPublisherAdapter implements EventPublisher {
 
 ## Factory
 
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
 复杂领域对象创建逻辑归 Factory，不放在构造函数中：
 
 ```java
@@ -294,6 +269,8 @@ public class OrderFactory {
 - 涉及外部数据/技术实现的创建用 Application Factory（application 层），调用 Port 获取数据后创建
 
 ## Specification
+
+> 概念见 ddd-architecture，以下为 Java 实现示例。
 
 Specification 将业务规则封装为可组合的谓词对象，用于判定候选对象是否满足特定条件：
 
@@ -384,6 +361,8 @@ public class OrderService {
 
 ## Anti-Corruption Layer
 
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
 防腐层（ACL）隔离外部模型与领域模型：
 
 ```
@@ -399,6 +378,8 @@ infrastructure/acl/
 - 约束：领域模型不依赖外部模型，ACL 转换方向仅为 infrastructure → domain
 
 ## 核心规则
+
+> 概念见 ddd-architecture，以下为 Java 实现示例。
 
 | # | 规则 | 违反后果 |
 |---|------|---------|
@@ -423,6 +404,8 @@ infrastructure/acl/
 
 ## Port / Adapter 模式
 
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
 Domain 层定义 Port 接口（纯业务契约），Infrastructure 层实现 Adapter：
 
 ```java
@@ -439,6 +422,8 @@ public class LlmOrderGenAdapter implements OrderGenerationPort {
 ```
 
 ## 共性能力基础设施化
+
+> 概念见 ddd-architecture，以下为 Java 实现示例。
 
 应统一拦截/封装到 Infrastructure 层或框架级能力的横向逻辑，不得分散在各 Controller/Service 中逐点调用。
 
@@ -457,7 +442,9 @@ public class LlmOrderGenAdapter implements OrderGenerationPort {
 
 ## MapStruct
 
-```java
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
+\`\`\`java
 @Mapper(componentModel = "spring")
 public interface OrderConverter {
     Order toDomain(OrderPO po);
@@ -469,7 +456,9 @@ public interface OrderConverter {
 
 ## Spring DI
 
-```java
+> 概念见 ddd-architecture，以下为 Java 实现示例。
+
+\`\`\`java
 // 正确：构造器注入
 @RestController
 public class OrderController {

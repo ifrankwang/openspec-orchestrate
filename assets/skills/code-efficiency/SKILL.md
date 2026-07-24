@@ -3,6 +3,8 @@ name: code-efficiency
 description: 代码效率工具：RTK（CLI 输出自动压缩）、Semble（语义搜索）、CodeGraph（知识图谱）。替代 grep/cat/ls/glob 等低效操作。
 ---
 
+> **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。
+
 # Code Efficiency — 硬约束协议
 
 ## 前置工具

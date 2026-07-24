@@ -1,7 +1,10 @@
 ---
 name: java-quality-gate
-description: 仅限 Java 后端开发场景。确定性质量门工具集。Tool review 由 openspec-reviewer-tool 加载，用于执行 spotless / ArchUnit / PMD / mvn test / SonarQube 等 Java 项目确定性工具检查，将违规项映射为统一 issue 结构并跨维提交（归属于 5 维之一）。
+description: 仅限 Java 后端开发场景。Java 项目质量门工具集——Maven/Spotless/PMD/ArchUnit/JaCoCo/SonarQube/OWASP Dependency-Check。通用质量门流程见 quality-gate。
 ---
+
+> **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。
+> 本 skill 是 quality-gate 的 Java 实现配套，仅含 Java 技术栈特有工具命令与输出解析。通用质量门流程见 quality-gate。调用本 skill 须同时加载 quality-gate。
 
 ## 适用范围
 
@@ -12,8 +15,6 @@ description: 仅限 Java 后端开发场景。确定性质量门工具集。Tool
 - developer 不加载本 skill
 
 ## 通用步骤
-
-执行以下工具检查，每步结果须同时报告给编排者（文本描述）。
 
 ### 必做检查清单
 

@@ -3,6 +3,8 @@ name: api-test
 description: Web 应用 API 自动化测试——编写 HTTP 黑盒测试脚本与前置 SQL 数据脚本。技术栈无关，仅绑定 Web 应用。适用场景：Phase 3 任务验证中编写/补充 API 测试脚本（task-verifier）。
 ---
 
+> **项目规范优先**：本 skill 所列约定为推荐标准。若项目已有明确规范且与本 skill 不一致，以项目规范为准。
+
 ## 目录结构
 
 API 测试素材独立于项目源代码目录（不放入 src/test/ 等构建工具测试源码目录），避免与单元测试混淆。
@@ -67,10 +69,10 @@ API 测试脚本运行前 reviewer 需获取有效认证凭证。常见模式：
 
 1. **Dev-only login 端点**：检查项目配置中是否有 profile 专属的免登入口（如 local/dev profile 下的登录 API）
 2. **静态 Token**：检查项目是否有 dev profile 专属的 JWT 密钥配置，可用相同密钥签发测试 token
-3. **Basic Auth**：检查 spring security / 项目配置中 dev profile 是否有固定凭证
+3. **Basic Auth**：检查项目安全配置中 dev profile 是否有固定凭证或免登入口
 4. **无认证**：若 dev profile 完全关闭认证，无需 token
 
-reviewer 从项目 application 配置文件和 SecurityConfig 中查找。
+reviewer 从项目配置文件和安全配置类中查找。
 
 ## 执行顺序
 

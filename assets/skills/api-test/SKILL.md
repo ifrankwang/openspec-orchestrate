@@ -35,19 +35,19 @@ BASE="http://localhost:8080"
 # 正常路径
 echo "=== 正常路径：创建资源 ==="
 curl -s -H "$AUTH" -H "Content-Type: application/json" \
-  -X POST "$BASE/api/v1/engagements" \
-  -d '{"name": "测试项目"}' | jq .
+  -X POST "$BASE/api/v1/resources" \
+  -d '{"name": "测试数据"}' | jq .
 
 # 关键边界：缺必填字段
 echo "=== 边界：缺必填字段 ==="
 curl -s -H "$AUTH" -H "Content-Type: application/json" \
-  -X POST "$BASE/api/v1/engagements" \
+  -X POST "$BASE/api/v1/resources" \
   -d '{}' | jq '.code, .message'
 
 # 关键边界：非法值
 echo "=== 边界：非法值 ==="
 curl -s -H "$AUTH" -H "Content-Type: application/json" \
-  -X POST "$BASE/api/v1/engagements" \
+  -X POST "$BASE/api/v1/resources" \
   -d '{"name": ""}' | jq '.code, .message'
 ```
 

@@ -38,8 +38,8 @@ target/
 ## 测试规范
 
 **命名规范**：
-- 测试类：`{ClassName}Test`（如 `RiskSignalDetectorTest`）
-- 测试方法：`test{MethodName}`（如 `testDetectHighRiskSignals`）
+- 测试类：`{ClassName}Test`（如 `OrderServiceTest`）
+- 测试方法：`test{MethodName}`（如 `testCreateOrder`）
 
 **分层策略**：
 - domain service 测试用纯 JUnit，零 Spring 依赖（domain 层本就无框架依赖）
@@ -69,7 +69,7 @@ target/
 **SLF4J + Logback**：
 ```java
 private static final Logger log = LoggerFactory.getLogger(MyClass.class);
-log.info("Processing loan {}", loanId);  // 参数化，不拼接字符串
+log.info("Processing order {}", orderId);  // 参数化，不拼接字符串
 ```
 
 **级别配置**：domain=DEBUG, infrastructure=INFO, framework=WARN
@@ -86,7 +86,7 @@ log.info("Processing loan {}", loanId);  // 参数化，不拼接字符串
 feat(domain): 新增 Xxx 值对象
 fix(infra): 修复 N+1 查询问题
 refactor(app): 重构 XxxService
-test(domain): 补充 RiskSignalDetector 测试
+test(domain): 补充 DomainRuleEngine 测试
 docs: 更新 AGENTS.md
 chore: 升级依赖版本
 ```

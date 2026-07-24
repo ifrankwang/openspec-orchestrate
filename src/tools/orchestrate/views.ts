@@ -634,8 +634,9 @@ export function renderTaskReviewView(state: OrchestrateState, tg: TaskGroupState
     lines.push(`${stepNum++}. 校验实施内容是否遵循上方「实施指引」中的指引；发现违背时报 issue`)
   }
   lines.push(`${stepNum++}. Task 产出验证：逐条核验「Task (待验证)」中每个 task 的产出（文件是否存在、目录是否非空、配置项/依赖是否就绪），按技术栈 skill 中构建命令验证编译`)
-  lines.push(`${stepNum++}. 服务启动验证：启动基础设施 → 启动应用 → 健康检查轮询（60s）→ 识别新增/变更接口 → 执行 dev 编写的 API 测试脚本并审查覆盖度与断言质量（遗漏场景通过 issue 提交 dev）→ 记录结果 → 停止服务`)
-  lines.push(`${stepNum++}. 测试代码审查：断言放水、边界缺失、Mock 过度、覆盖不足`)
+  lines.push(`${stepNum++}. 服务启动验证：启动基础设施（docker compose up -d）→ 后台启动应用（nohup 或 &，避免阻塞）→ 健康检查轮询（60s）→ 记录结果`)
+  lines.push(`${stepNum++}. API 影响识别与测试验证：①从 diff 与 spec 推断本轮受影响 API（数据依赖/业务流程/共享模型三维度）②逐条确认 dev 已为受影响 API 编写测试脚本（缺失脚本 → Low+ Issue）③执行已有 API 测试脚本并审查覆盖度与断言质量（遗漏边界场景通过 issue 提交 dev）④停止服务（kill + docker compose down）`)
+  lines.push(`${stepNum++}. UT 测试质量审查：逐文件审查本轮变更相关的单元测试——断言放水、边界缺失（空值/极值/非法输入）、Mock 过度、覆盖不足（主要分支与异常路径）；发现缺陷提 issue（Low+ 阻塞）`)
   lines.push(`${stepNum++}. 核验「审查 Issue」中「待确认」存量 issue 是否真已修复——已修复列入 fixed_issue_ids；未达标则不列入（工具自动回退为 rejected）`)
   lines.push(`${stepNum++}. 缺少验证所需真实资源/输入/凭证 → opx_task_review_submit(passed=false)，不得以 stub/降级/跳过判定通过`)
   lines.push(`${stepNum++}. 汇总 → opx_task_review_submit`)

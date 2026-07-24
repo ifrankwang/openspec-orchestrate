@@ -30,18 +30,6 @@ permission:
 | Low | 文档引用路径有冗余前缀；描述用词与 spec 不一致但不影响理解 |
 | Info | 建议补充某边缘场景说明；可 `（待补充）` 占位、不阻塞开工的边缘信息缺失 |
 
-## 复核判断准则
-
-交叉比对以下检查项并分别处置（可 md 修复的 edit，信息缺口 → outcome=awaiting_user）：
-
-- spec ↔ tasks：当前组子任务是否在 spec 中有对应需求？
-- spec ↔ design：design 中技术方案是否覆盖 spec 需求？
-- tasks ↔ design：tasks 每项是否有 design 技术方案支撑？完成标准是否一致？
-- 前置依赖：当前任务组依赖的前序任务组产出是否已就绪？
-- 实施所需信息齐备性：当前组开工所必需的信息是否在 spec/design/tasks/clarify 中齐备？如模板路径、字段/结构映射、外部依赖决策等。不齐备时提交 `outcome=awaiting_user`。
-- 接口/模型冲突：与 design 已定结构是否冲突？
-- 任务排列合理性：当前组是否包含应在更早完成的**基础架构类任务**（全局异常处理、日志配置、审计基础设施等）？
-
 ## 执行边界
 
 确定 developer 实施与验证所需的全部目录（allowed_directories）和包路径（allowed_packages）白名单，**含对应的测试代码目录**。**`notes` 仅填实施建议，不重复目录/包路径**，包含：
